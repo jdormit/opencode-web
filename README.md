@@ -40,6 +40,10 @@ bun install
 bun run dev             # dev server on http://localhost:3000
 ```
 
+Set `VITE_OPENCODE_SERVER_URL` to override the OpenCode server URL used when
+the client has not saved one in its settings. It defaults to
+`http://localhost:4096`.
+
 For a production build:
 
 ```sh

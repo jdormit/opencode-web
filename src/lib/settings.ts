@@ -1,6 +1,11 @@
 export const SERVER_URL_COOKIE = 'oc_server_url'
 export const AUTH_COOKIE = 'oc_server_auth'
-export const DEFAULT_SERVER_URL = 'http://localhost:4096'
+export function resolveDefaultServerUrl(configuredUrl?: string): string {
+  return configuredUrl || 'http://localhost:4096'
+}
+export const DEFAULT_SERVER_URL = resolveDefaultServerUrl(
+  import.meta.env.VITE_OPENCODE_SERVER_URL,
+)
 export const THEME_STORAGE_KEY = 'oc-theme'
 
 export interface ServerConfig {

@@ -136,11 +136,17 @@ export const projectsQuery = () =>
   })
 
 /**
- * The server caps session lists at 100 by default (and offers no backward
- * pagination cursor), so we window the sidebar to the most recent sessions
- * and lazy-load full history per project via sessionsAllQuery.
+ * Window the sidebar to the most recent sessions and lazy-load full history
+ * per project via sessionsAllQuery.
  */
 export const SESSION_LIST_LIMIT = 100
+
+export function sessionListRequest(directory: string, limit: number) {
+  return {
+    path: '/experimental/session',
+    query: { directory, roots: 'true', limit },
+  }
+}
 
 function sortSessions(sessions: Array<Session>) {
   return sessions
@@ -152,10 +158,9 @@ export const sessionsQuery = (directory: string) =>
   queryOptions({
     queryKey: ['sessions', directory],
     queryFn: async () => {
-      const sessions = await ocFetch<Array<Session>>('/session', {
-        // roots=true excludes subagent child sessions so they don't count
-        // against the limit (sortSessions filters them as a fallback).
-        query: { directory, roots: 'true', limit: SESSION_LIST_LIMIT },
+      const request = sessionListRequest(directory, SESSION_LIST_LIMIT)
+      const sessions = await ocFetch<Array<Session>>(request.path, {
+        query: request.query,
       })
       return sortSessions(sessions)
     },
@@ -167,8 +172,9 @@ export const sessionsAllQuery = (directory: string) =>
   queryOptions({
     queryKey: ['sessions-all', directory],
     queryFn: async () => {
-      const sessions = await ocFetch<Array<Session>>('/session', {
-        query: { directory, roots: 'true', limit: 100_000 },
+      const request = sessionListRequest(directory, 100_000)
+      const sessions = await ocFetch<Array<Session>>(request.path, {
+        query: request.query,
       })
       return sortSessions(sessions)
     },

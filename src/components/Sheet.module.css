@@ -22,9 +22,7 @@
 
 @media (min-width: 640px) {
   .content {
-    left: 50%;
-    right: auto;
-    transform: translateX(-50%);
+    margin-inline: auto;
     width: 480px;
   }
 }

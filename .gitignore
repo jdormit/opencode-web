@@ -1,0 +1,13 @@
+.DS_Store
+node_modules
+dist
+.tanstack
+.nitro
+.output
+.env
+
+# local reference material and tool artifacts
+claude-app-screenshots/
+.playwright-cli/
+.memsearch/
+opencode.jsonc

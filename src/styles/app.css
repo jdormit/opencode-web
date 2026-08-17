@@ -1,0 +1,131 @@
+/* ---- Reset ---- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+input,
+button,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+}
+
+p,
+h1,
+h2,
+h3,
+h4 {
+  overflow-wrap: break-word;
+}
+
+/* ---- Theme ---- */
+:root {
+  color-scheme: light dark;
+
+  --bg: light-dark(#faf9f7, #161616);
+  --bg-raised: light-dark(#ffffff, #1f1f1f);
+  --bg-inset: light-dark(#f0eeea, #262626);
+  --bg-hover: light-dark(#efede8, #2a2a2a);
+  --bg-overlay: light-dark(rgb(30 28 24 / 0.4), rgb(0 0 0 / 0.6));
+
+  --border: light-dark(#e4e1db, #2e2e2e);
+  --border-strong: light-dark(#d4d0c8, #3c3c3c);
+
+  --text: light-dark(#20201d, #ececea);
+  --text-muted: light-dark(#6d6b64, #a3a29d);
+  --text-faint: light-dark(#98958c, #6e6d68);
+
+  --accent: light-dark(#4956d4, #8b95f6);
+  --accent-bg: light-dark(#eceefc, #262a45);
+  --accent-contrast: light-dark(#ffffff, #12142a);
+
+  --danger: light-dark(#c03d33, #f0847b);
+  --danger-bg: light-dark(#fbeceb, #3a2321);
+  --ok: light-dark(#2c7a4b, #7bd8a1);
+
+  --shadow-sheet: 0 -8px 40px rgb(0 0 0 / 0.18);
+  --shadow-pop: 0 4px 24px light-dark(rgb(30 28 24 / 0.12), rgb(0 0 0 / 0.5));
+
+  --radius-s: 8px;
+  --radius-m: 12px;
+  --radius-l: 20px;
+  --radius-pill: 999px;
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+
+  --sidebar-width: 320px;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 15px;
+}
+
+#root {
+  height: 100%;
+}
+
+::selection {
+  background: var(--accent-bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

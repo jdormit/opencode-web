@@ -1,0 +1,169 @@
+.userRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-block: 18px;
+}
+
+.userBubble {
+  max-width: 85%;
+  background: var(--bg-inset);
+  border-radius: var(--radius-l);
+  border-bottom-right-radius: 6px;
+  padding: 10px 14px;
+  white-space: pre-wrap;
+  font-size: 15px;
+}
+
+.assistant {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-block: 10px;
+}
+
+.error {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-radius: var(--radius-m);
+  padding: 10px 14px;
+  font-size: 13.5px;
+}
+
+.aborted {
+  color: var(--text-faint);
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* ---- Collapsible rows (tools, reasoning) ---- */
+
+.tool,
+.reasoning {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--bg-raised);
+  font-size: 13px;
+  overflow: hidden;
+}
+
+.tool summary,
+.reasoning summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  color: var(--text-muted);
+  min-width: 0;
+}
+
+.tool summary::-webkit-details-marker,
+.reasoning summary::-webkit-details-marker {
+  display: none;
+}
+
+.disclosure {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.tool[open] .disclosure,
+.reasoning[open] .disclosure {
+  transform: rotate(90deg);
+}
+
+.toolName {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.toolTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.toolStatus {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  margin-left: auto;
+}
+
+.toolChip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--bg-raised);
+  font-size: 13px;
+  padding: 8px 12px;
+  color: var(--text-muted);
+}
+
+.toolBody {
+  border-top: 1px solid var(--border);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.toolIo {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  background: var(--bg-inset);
+  border-radius: var(--radius-s);
+  padding: 8px 10px;
+  overflow-x: auto;
+  max-height: 320px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+
+.toolError {
+  color: var(--danger);
+}
+
+.ok {
+  color: var(--ok);
+}
+
+.bad {
+  color: var(--danger);
+}
+
+.spinner {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.reasoningBody {
+  border-top: 1px solid var(--border);
+  padding: 10px 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+}

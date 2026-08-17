@@ -1,0 +1,160 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+}
+
+.back,
+.spacer {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+.back {
+  border-radius: 50%;
+  color: var(--text-muted);
+}
+
+.back:hover {
+  background: var(--bg-inset);
+  color: var(--text);
+}
+
+.heading {
+  flex: 1;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.form {
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 12px 18px calc(24px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sectionTitle {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.field input {
+  padding: 10px 12px;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  font-size: 15px;
+  outline: none;
+}
+
+.field input:focus {
+  border-color: var(--accent);
+}
+
+.help {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.help code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  background: var(--bg-inset);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.clearAuth {
+  align-self: flex-start;
+  font-size: 12.5px;
+  color: var(--danger);
+  padding: 2px 0;
+}
+
+.clearAuth:hover {
+  text-decoration: underline;
+}
+
+.themeRow {
+  display: flex;
+  gap: 8px;
+}
+
+.themeOption,
+.themeActive {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: var(--radius-m);
+  font-size: 14px;
+  font-weight: 500;
+  background: var(--bg-inset);
+  border: 1px solid transparent;
+}
+
+.themeOption:hover {
+  background: var(--bg-hover);
+}
+
+.themeActive {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.save {
+  padding: 12px;
+  border-radius: var(--radius-m);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.save:disabled {
+  opacity: 0.6;
+}
+
+.ok {
+  color: var(--ok);
+  font-size: 14px;
+}
+
+.error {
+  color: var(--danger);
+  font-size: 14px;
+}

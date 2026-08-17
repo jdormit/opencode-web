@@ -1,0 +1,91 @@
+.composer {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-pop);
+  padding: 12px 12px 10px;
+}
+
+.input {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  resize: none;
+  font-size: 15px;
+  line-height: 1.45;
+  max-height: 200px;
+  padding: 2px 4px;
+}
+
+.input::placeholder {
+  color: var(--text-faint);
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  min-width: 0;
+}
+
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-inset);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.pill:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.pill:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.pillLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 130px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.send,
+.stop {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.send {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.send:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.stop {
+  background: var(--danger);
+  color: #fff;
+}

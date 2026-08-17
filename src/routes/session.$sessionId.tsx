@@ -10,6 +10,7 @@ import {
   agentsQuery,
   deleteSession,
   messagesQuery,
+  permissionsQuery,
   projectName,
   projectsQuery,
   promptSession,
@@ -46,6 +47,9 @@ export const Route = createFileRoute('/session/$sessionId')({
       )
       await queryClient.ensureQueryData(
         messagesQuery(session.id, session.directory),
+      )
+      await queryClient.ensureQueryData(
+        permissionsQuery(session.id, session.directory),
       )
     } catch {
       // Not found or server unreachable; the page renders its own states.
@@ -320,6 +324,7 @@ function SessionPage() {
           busy={busy}
           onAbort={handleAbort}
           modelRef={modelRef}
+          directory={session?.directory}
           onModelChange={setModelOverride}
           agentName={agentName}
           onAgentChange={setAgentOverride}

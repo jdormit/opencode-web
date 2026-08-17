@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query'
 import {
   agentsQuery,
+  configQuery,
   createSession,
   deleteSession,
   projectsQuery,
@@ -11,7 +12,11 @@ import {
   sessionsQuery,
 } from '~/lib/oc'
 import type { Session } from '~/lib/oc'
-import { defaultModel, recordModelUse } from '~/lib/model-usage'
+import {
+  configuredModel,
+  defaultModel,
+  recordModelUse,
+} from '~/lib/model-usage'
 import type { ModelRef } from '~/lib/model-usage'
 import { greeting } from '~/lib/format'
 import { Composer } from '~/components/Composer'
@@ -31,7 +36,6 @@ function NewSessionPage() {
   const { openDrawer } = useShell()
 
   const projects = useQuery(projectsQuery())
-  const providers = useQuery(providersQuery())
   const sessionQueries = useQueries({
     queries: (projects.data ?? []).map((p) => sessionsQuery(p.worktree)),
   })
@@ -64,12 +68,15 @@ function NewSessionPage() {
   const project =
     projects.data?.find((p) => p.id === projectId) ?? defaultProject
 
-  const [modelRef, setModelRef] = React.useState<ModelRef>()
-  React.useEffect(() => {
-    if (!modelRef && providers.data) {
-      setModelRef(defaultModel(providers.data))
-    }
-  }, [modelRef, providers.data])
+  const providers = useQuery(providersQuery(project?.worktree))
+  const config = useQuery(configQuery(project?.worktree))
+  const [modelOverride, setModelOverride] = React.useState<ModelRef>()
+  const modelRef =
+    modelOverride ??
+    configuredModel(config.data?.model, providers.data) ??
+    (!config.isPending && providers.data
+      ? defaultModel(providers.data)
+      : undefined)
 
   const agents = useQuery(agentsQuery())
   const [agentOverride, setAgentOverride] = React.useState<string>()
@@ -160,12 +167,13 @@ function NewSessionPage() {
           onSend={handleSend}
           sending={sending}
           project={project}
+          directory={project?.worktree}
           onProjectChange={(p) => {
             setProjectId(p.id)
             window.localStorage.setItem(LAST_PROJECT_KEY, p.id)
           }}
           modelRef={modelRef}
-          onModelChange={setModelRef}
+          onModelChange={setModelOverride}
           agentName={agentName}
           onAgentChange={setAgentOverride}
           autoFocus

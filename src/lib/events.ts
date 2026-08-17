@@ -6,7 +6,7 @@ import type {
   Message,
   MessageWithParts,
   Part,
-  Permission,
+  PendingPermission,
   Session,
   SessionStatus,
 } from './oc'
@@ -78,7 +78,7 @@ function updateMessages(
   )
 }
 
-function applyEvent(
+export function applyEvent(
   queryClient: QueryClient,
   directory: string | undefined,
   event: Event,
@@ -188,8 +188,8 @@ function applyEvent(
       break
     }
     case 'permission.updated': {
-      const permission = event.properties
-      queryClient.setQueryData<Array<Permission>>(
+      const permission = event.properties as PendingPermission
+      queryClient.setQueryData<Array<PendingPermission>>(
         ['permissions', permission.sessionID],
         (permissions) => {
           const rest = (permissions ?? []).filter(
@@ -201,9 +201,14 @@ function applyEvent(
       break
     }
     case 'permission.replied': {
-      const { sessionID, permissionID } = event.properties
-      queryClient.setQueryData<Array<Permission>>(
-        ['permissions', sessionID],
+      const properties = event.properties as {
+        sessionID: string
+        permissionID?: string
+        requestID?: string
+      }
+      const permissionID = properties.permissionID ?? properties.requestID
+      queryClient.setQueryData<Array<PendingPermission>>(
+        ['permissions', properties.sessionID],
         (permissions) => permissions?.filter((p) => p.id !== permissionID),
       )
       break
@@ -218,6 +223,19 @@ function applyEvent(
     default: {
       // Forward-compat: newer servers stream text via message.part.delta.
       const unknown = event as { type: string; properties?: any }
+      if (unknown.type === 'permission.asked' && unknown.properties) {
+        const permission = unknown.properties as PendingPermission
+        queryClient.setQueryData<Array<PendingPermission>>(
+          ['permissions', permission.sessionID],
+          (permissions) => {
+            const rest = (permissions ?? []).filter(
+              (item) => item.id !== permission.id,
+            )
+            return [...rest, permission]
+          },
+        )
+        break
+      }
       if (unknown.type === 'message.part.delta' && unknown.properties) {
         const { sessionID, messageID, partID, field, delta } =
           unknown.properties
@@ -261,6 +279,8 @@ export function useGlobalEvents() {
       source = new EventSource('/api/proxy/global/event')
 
       source.onopen = () => {
+        // Close the gap between the permission snapshot and SSE connection.
+        void queryClient.invalidateQueries({ queryKey: ['permissions'] })
         if (hadError) {
           // We may have missed events while disconnected; resync.
           void queryClient.invalidateQueries({ queryKey: ['sessions'] })

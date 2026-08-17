@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { respondPermission } from '~/lib/oc'
-import type { Permission } from '~/lib/oc'
+import { permissionsQuery, respondPermission } from '~/lib/oc'
+import type { PendingPermission } from '~/lib/oc'
 import styles from './PermissionBanner.module.css'
 
 export function PermissionBanner({
@@ -11,19 +11,15 @@ export function PermissionBanner({
   directory: string
 }) {
   const queryClient = useQueryClient()
-  const { data: permissions } = useQuery<Array<Permission>>({
-    queryKey: ['permissions', sessionId],
-    queryFn: () => [],
-    initialData: [],
-    staleTime: Infinity,
-    gcTime: Infinity,
-  })
+  const { data: permissions = [] } = useQuery(
+    permissionsQuery(sessionId, directory),
+  )
 
   const permission = permissions[0]
   if (!permission) return null
 
   const respond = async (response: 'once' | 'always' | 'reject') => {
-    queryClient.setQueryData<Array<Permission>>(
+    queryClient.setQueryData<Array<PendingPermission>>(
       ['permissions', sessionId],
       (prev) => prev?.filter((p) => p.id !== permission.id),
     )
@@ -38,12 +34,20 @@ export function PermissionBanner({
     <div className={styles.banner}>
       <div className={styles.text}>
         <span className={styles.label}>Permission requested</span>
-        <span className={styles.title}>{permission.title}</span>
+        <span className={styles.title}>
+          {permission.title ?? permission.permission ?? 'Permission request'}
+        </span>
         {typeof permission.metadata?.command === 'string' && (
           <code className={styles.command}>
             {permission.metadata.command}
           </code>
         )}
+        {typeof permission.metadata?.command !== 'string' &&
+          permission.patterns?.map((pattern) => (
+            <code key={pattern} className={styles.command}>
+              {pattern}
+            </code>
+          ))}
       </div>
       <div className={styles.actions}>
         <button

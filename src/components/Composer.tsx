@@ -17,6 +17,7 @@ export interface ComposerProps {
 
   /** When provided, a project picker pill is shown (new sessions only). */
   project?: Project
+  directory?: string
   onProjectChange?: (project: Project) => void
 
   modelRef?: ModelRef
@@ -37,6 +38,7 @@ export function Composer({
   onAbort,
   sending,
   project,
+  directory,
   onProjectChange,
   modelRef,
   onModelChange,
@@ -48,7 +50,7 @@ export function Composer({
   const [sheet, setSheet] = React.useState<SheetName>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
 
-  const providers = useQuery(providersQuery())
+  const providers = useQuery(providersQuery(directory))
   const agents = useQuery(agentsQuery())
 
   const selectedModel = findModel(providers.data, modelRef)
@@ -166,6 +168,7 @@ export function Composer({
         open={sheet === 'model'}
         onOpenChange={(open) => setSheet(open ? 'model' : null)}
         selected={modelRef}
+        directory={directory}
         onSelect={(ref) => {
           onModelChange(ref)
           setSheet(null)

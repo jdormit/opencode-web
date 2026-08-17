@@ -65,14 +65,16 @@ export function ModelSheet({
   open,
   onOpenChange,
   selected,
+  directory,
   onSelect,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   selected?: ModelRef
+  directory?: string
   onSelect: (ref: ModelRef) => void
 }) {
-  const providers = useQuery(providersQuery())
+  const providers = useQuery(providersQuery(directory))
   const [showAll, setShowAll] = React.useState(false)
   const [search, setSearch] = React.useState('')
 

@@ -3,6 +3,7 @@ import { queryOptions } from '@tanstack/react-query'
 import { getServerConfigFromRequest } from './settings.server'
 import type {
   Agent,
+  Config,
   ConfigProvidersResponse,
   Message,
   Part,
@@ -13,6 +14,7 @@ import type {
 
 export type {
   Agent,
+  Config,
   ConfigProvidersResponse,
   Event,
   Message,
@@ -29,6 +31,15 @@ export type {
 export interface MessageWithParts {
   info: Message
   parts: Array<Part>
+}
+
+export interface PendingPermission {
+  id: string
+  sessionID: string
+  title?: string
+  permission?: string
+  patterns?: Array<string>
+  metadata: Record<string, unknown>
 }
 
 /**
@@ -195,11 +206,24 @@ export const agentsQuery = () =>
     staleTime: 5 * 60_000,
   })
 
-export const providersQuery = () =>
+export const providersQuery = (directory?: string) =>
   queryOptions({
-    queryKey: ['providers'],
-    queryFn: () => ocFetch<ConfigProvidersResponse>('/config/providers'),
+    queryKey: ['providers', directory],
+    queryFn: () =>
+      ocFetch<ConfigProvidersResponse>('/config/providers', {
+        query: { directory },
+      }),
     staleTime: 5 * 60_000,
+  })
+
+export const configQuery = (directory?: string) =>
+  queryOptions({
+    queryKey: ['config', directory],
+    queryFn: () =>
+      ocFetch<Config>('/config', {
+        query: { directory },
+      }),
+    staleTime: 0,
   })
 
 export const sessionStatusQuery = () =>
@@ -224,6 +248,29 @@ export const sessionStatusQuery = () =>
       }
     },
     staleTime: 30_000,
+  })
+
+export function permissionsForSession(
+  permissions: Array<PendingPermission>,
+  sessionId: string,
+) {
+  return permissions.filter((permission) => permission.sessionID === sessionId)
+}
+
+export const permissionsQuery = (sessionId: string, directory: string) =>
+  queryOptions({
+    queryKey: ['permissions', sessionId],
+    queryFn: async () => {
+      const permissions = await ocFetch<Array<PendingPermission>>(
+        '/permission',
+        { query: { directory } },
+      )
+      return permissionsForSession(permissions, sessionId)
+    },
+    // Events keep this cache current after mounting, but it must always
+    // reconcile with the server when a session is opened.
+    staleTime: 0,
+    gcTime: Infinity,
   })
 
 /* ---- Mutations ---- */

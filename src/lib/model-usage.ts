@@ -80,6 +80,19 @@ export function defaultModel(
   return ranked[0]?.ref
 }
 
+export function configuredModel(
+  configured: string | undefined,
+  providers: ConfigProvidersResponse | undefined,
+): ModelRef | undefined {
+  if (!configured || !providers) return undefined
+  const [providerID, ...modelParts] = configured.split('/')
+  const modelID = modelParts.join('/')
+  if (!providerID || !modelID) return undefined
+  const provider = providers.providers.find((item) => item.id === providerID)
+  if (!provider?.models[modelID]) return undefined
+  return { providerID, modelID }
+}
+
 export function findModel(
   providers: ConfigProvidersResponse | undefined,
   ref: ModelRef | undefined,

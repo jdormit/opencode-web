@@ -36,15 +36,20 @@ export const Route = createRootRouteWithContext<{
       {
         name: 'viewport',
         content:
-          'width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content',
+          'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content',
       },
       { title: 'opencode' },
+      { name: 'apple-mobile-web-app-capable', content: 'yes' },
+      { name: 'apple-mobile-web-app-title', content: 'opencode' },
       { name: 'theme-color', content: '#faf9f7', media: '(prefers-color-scheme: light)' },
       { name: 'theme-color', content: '#161616', media: '(prefers-color-scheme: dark)' },
     ],
     links: [
       { rel: 'stylesheet', href: appCss },
       { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
+      { rel: 'apple-touch-icon', href: '/apple-touch-icon-v2.png', sizes: '180x180' },
+      { rel: 'apple-touch-icon-precomposed', href: '/apple-touch-icon-precomposed.png', sizes: '180x180' },
+      { rel: 'manifest', href: '/manifest.json' },
     ],
     scripts: [{ children: themeInitScript }],
   }),

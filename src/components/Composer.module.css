@@ -6,6 +6,73 @@
   padding: 12px 12px 10px;
 }
 
+.attachments {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 1px 4px 9px;
+  scrollbar-width: none;
+}
+
+.attachments::-webkit-scrollbar {
+  display: none;
+}
+
+.attachment {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.attachmentImage,
+.attachmentFile {
+  width: 62px;
+  height: 50px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-inset);
+}
+
+.attachmentImage {
+  object-fit: cover;
+}
+
+.attachmentFile {
+  width: 132px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  color: var(--text-muted);
+}
+
+.attachmentFile span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.removeAttachment {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--text-muted);
+  color: var(--bg-raised);
+}
+
+.attachmentError {
+  margin: 0 4px 7px;
+  color: var(--danger);
+  font-size: 12px;
+}
+
 .input {
   width: 100%;
   border: none;
@@ -28,6 +95,22 @@
   gap: 6px;
   margin-top: 8px;
   min-width: 0;
+}
+
+.attach {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--bg-inset);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.attach:hover {
+  background: var(--bg-hover);
+  color: var(--text);
 }
 
 .pill {
@@ -73,6 +156,10 @@
   height: 36px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+
+.fileInput {
+  display: none;
 }
 
 .send {

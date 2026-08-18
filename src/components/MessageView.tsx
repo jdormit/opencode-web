@@ -15,10 +15,23 @@ export const MessageView = React.memo(function MessageView({
       .filter((p) => p.type === 'text' && !p.synthetic)
       .map((p) => (p.type === 'text' ? p.text : ''))
       .join('\n')
-    if (!text.trim()) return null
+    const attachments = message.parts.filter(
+      (part): part is Extract<Part, { type: 'file' }> =>
+        part.type === 'file' && part.url.startsWith('data:'),
+    )
+    if (!text.trim() && attachments.length === 0) return null
     return (
       <div className={styles.userRow}>
-        <div className={styles.userBubble}>{text}</div>
+        <div className={styles.userMessage}>
+          {attachments.length > 0 && (
+            <div className={styles.userAttachments}>
+              {attachments.map((attachment) => (
+                <UserAttachment key={attachment.id} part={attachment} />
+              ))}
+            </div>
+          )}
+          {text.trim() && <div className={styles.userBubble}>{text}</div>}
+        </div>
       </div>
     )
   }
@@ -42,6 +55,37 @@ export const MessageView = React.memo(function MessageView({
     </div>
   )
 })
+
+function UserAttachment({
+  part,
+}: {
+  part: Extract<Part, { type: 'file' }>
+}) {
+  if (part.mime.startsWith('image/')) {
+    return (
+      <a href={part.url} target="_blank" rel="noreferrer">
+        <img
+          className={styles.userAttachmentImage}
+          src={part.url}
+          alt={part.filename ?? 'Attached image'}
+        />
+      </a>
+    )
+  }
+  return (
+    <a
+      className={styles.userAttachmentFile}
+      href={part.url}
+      target="_blank"
+      rel="noreferrer"
+    >
+      <span className={styles.userAttachmentType}>
+        {part.mime === 'application/pdf' ? 'PDF' : 'FILE'}
+      </span>
+      <span>{part.filename ?? 'Attachment'}</span>
+    </a>
+  )
+}
 
 function PartView({ part }: { part: Part }) {
   switch (part.type) {

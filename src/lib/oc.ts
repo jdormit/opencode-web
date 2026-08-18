@@ -18,6 +18,7 @@ import type {
   QuestionInfo,
   QuestionRequest,
 } from '@opencode-ai/sdk/v2'
+import type { MessageAttachment } from './attachments'
 
 export type {
   Agent,
@@ -370,6 +371,21 @@ export interface PromptInput {
   model?: { providerID: string; modelID: string }
   agent?: string
   text: string
+  attachments?: Array<MessageAttachment>
+}
+
+export function promptParts(input: PromptInput) {
+  return [
+    ...(input.text
+      ? [{ type: 'text' as const, text: input.text }]
+      : []),
+    ...(input.attachments ?? []).map((attachment) => ({
+      type: 'file' as const,
+      mime: attachment.mime,
+      filename: attachment.filename,
+      url: attachment.url,
+    })),
+  ]
 }
 
 export function promptSession(
@@ -383,7 +399,7 @@ export function promptSession(
     body: {
       model: input.model,
       agent: input.agent,
-      parts: [{ type: 'text' as const, text: input.text }],
+      parts: promptParts(input),
     },
   })
 }

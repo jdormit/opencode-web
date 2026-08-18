@@ -4,14 +4,31 @@ import { agentsQuery, projectName, providersQuery } from '~/lib/oc'
 import type { Project } from '~/lib/oc'
 import { findModel } from '~/lib/model-usage'
 import type { ModelRef } from '~/lib/model-usage'
-import { ArrowUpIcon, BotIcon, ChipIcon, FolderIcon, StopIcon } from './icons'
+import {
+  ACCEPTED_FILE_TYPES,
+  createAttachment,
+} from '~/lib/attachments'
+import type { MessageAttachment } from '~/lib/attachments'
+import {
+  ArrowUpIcon,
+  BotIcon,
+  ChipIcon,
+  FileIcon,
+  FolderIcon,
+  PlusIcon,
+  StopIcon,
+  XIcon,
+} from './icons'
 import { AgentSheet, ModelSheet, ProjectSheet } from './pickers'
 import { OpenProjectSheet } from './OpenProjectSheet'
 import styles from './Composer.module.css'
 
 export interface ComposerProps {
   placeholder?: string
-  onSend: (text: string) => void | Promise<void>
+  onSend: (
+    text: string,
+    attachments: Array<MessageAttachment>,
+  ) => void | Promise<void>
   busy?: boolean
   onAbort?: () => void
   sending?: boolean
@@ -30,7 +47,12 @@ export interface ComposerProps {
   autoFocus?: boolean
 }
 
-type SheetName = 'project' | 'openProject' | 'model' | 'agent' | null
+type SheetName =
+  | 'project'
+  | 'openProject'
+  | 'model'
+  | 'agent'
+  | null
 
 export function Composer({
   placeholder = 'Message opencode…',
@@ -48,8 +70,14 @@ export function Composer({
   autoFocus,
 }: ComposerProps) {
   const [text, setText] = React.useState('')
+  const [attachments, setAttachments] = React.useState<Array<MessageAttachment>>(
+    [],
+  )
+  const [attachmentError, setAttachmentError] = React.useState<string>()
+  const [addingAttachments, setAddingAttachments] = React.useState(false)
   const [sheet, setSheet] = React.useState<SheetName>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   const providers = useQuery(providersQuery(directory))
   const agents = useQuery(agentsQuery())
@@ -68,23 +96,88 @@ export function Composer({
   }, [])
 
   const canSend =
-    text.trim().length > 0 && !sending && (!onProjectChange || !!project)
+    (text.trim().length > 0 || attachments.length > 0) &&
+    !addingAttachments &&
+    !sending &&
+    (!onProjectChange || !!project)
+
+  const addFiles = async (files: FileList | null) => {
+    if (!files?.length) return
+    setAddingAttachments(true)
+    setAttachmentError(undefined)
+    const added: Array<MessageAttachment> = []
+    try {
+      for (const file of Array.from(files)) {
+        try {
+          added.push(await createAttachment(file))
+        } catch (error) {
+          setAttachmentError(
+            error instanceof Error ? error.message : 'Could not attach file',
+          )
+        }
+      }
+      if (added.length) setAttachments((current) => [...current, ...added])
+    } finally {
+      setAddingAttachments(false)
+    }
+  }
 
   const submit = async () => {
     const value = text.trim()
-    if (!value || sending) return
+    if ((!value && attachments.length === 0) || sending || addingAttachments) return
+    const sentAttachments = attachments
     setText('')
+    setAttachments([])
+    setAttachmentError(undefined)
     requestAnimationFrame(resize)
     try {
-      await onSend(value)
+      await onSend(value, sentAttachments)
     } catch {
       // Restore the draft; the page surfaces the error itself.
       setText(value)
+      setAttachments(sentAttachments)
     }
   }
 
   return (
     <div className={styles.composer}>
+      {attachments.length > 0 && (
+        <div className={styles.attachments}>
+          {attachments.map((attachment) => (
+            <div className={styles.attachment} key={attachment.id}>
+              {attachment.mime.startsWith('image/') ? (
+                <img
+                  className={styles.attachmentImage}
+                  src={attachment.url}
+                  alt={attachment.filename}
+                />
+              ) : (
+                <div className={styles.attachmentFile}>
+                  <FileIcon size={18} />
+                  <span>{attachment.filename}</span>
+                </div>
+              )}
+              <button
+                type="button"
+                className={styles.removeAttachment}
+                onClick={() =>
+                  setAttachments((current) =>
+                    current.filter((item) => item.id !== attachment.id),
+                  )
+                }
+                aria-label={`Remove ${attachment.filename}`}
+              >
+                <XIcon size={11} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {attachmentError && (
+        <div className={styles.attachmentError} role="alert">
+          {attachmentError}
+        </div>
+      )}
       <textarea
         ref={textareaRef}
         className={styles.input}
@@ -105,6 +198,14 @@ export function Composer({
         }}
       />
       <div className={styles.controls}>
+        <button
+          type="button"
+          className={styles.attach}
+          onClick={() => fileInputRef.current?.click()}
+          aria-label="Add attachment"
+        >
+          <PlusIcon size={18} />
+        </button>
         {onProjectChange && (
           <button
             type="button"
@@ -161,6 +262,18 @@ export function Composer({
           </button>
         )}
       </div>
+
+      <input
+        ref={fileInputRef}
+        className={styles.fileInput}
+        type="file"
+        accept={ACCEPTED_FILE_TYPES.join(',')}
+        multiple
+        onChange={(event) => {
+          void addFiles(event.currentTarget.files)
+          event.currentTarget.value = ''
+        }}
+      />
 
       {onProjectChange && (
         <ProjectSheet

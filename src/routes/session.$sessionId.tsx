@@ -19,7 +19,8 @@ import {
   sessionQuery,
   sessionStatusQuery,
 } from '~/lib/oc'
-import type { MessageWithParts, Session } from '~/lib/oc'
+import type { MessageWithParts, Part, Session } from '~/lib/oc'
+import type { MessageAttachment } from '~/lib/attachments'
 import { recordModelUse } from '~/lib/model-usage'
 import type { ModelRef } from '~/lib/model-usage'
 import { Composer } from '~/components/Composer'
@@ -135,7 +136,10 @@ function SessionPage() {
     gcTime: Infinity,
   })
 
-  const handleSend = async (text: string) => {
+  const handleSend = async (
+    text: string,
+    attachments: Array<MessageAttachment>,
+  ) => {
     if (!session) return
     setSendError(undefined)
     queryClient.setQueryData(['session-error', sessionId], null)
@@ -156,13 +160,28 @@ function SessionPage() {
             model: modelRef ?? { providerID: '', modelID: '' },
           },
           parts: [
-            {
-              id: `${optimisticId}-part`,
-              sessionID: sessionId,
-              messageID: optimisticId,
-              type: 'text',
-              text,
-            },
+            ...(text
+              ? [
+                  {
+                    id: `${optimisticId}-text`,
+                    sessionID: sessionId,
+                    messageID: optimisticId,
+                    type: 'text' as const,
+                    text,
+                  },
+                ]
+              : []),
+            ...attachments.map(
+              (attachment, index): Part => ({
+                id: `${optimisticId}-file-${index}`,
+                sessionID: sessionId,
+                messageID: optimisticId,
+                type: 'file',
+                mime: attachment.mime,
+                filename: attachment.filename,
+                url: attachment.url,
+              }),
+            ),
           ],
         },
       ],
@@ -173,6 +192,7 @@ function SessionPage() {
         model: modelRef,
         agent: agentName,
         text,
+        attachments,
       })
     } catch (err) {
       queryClient.setQueryData<Array<MessageWithParts>>(

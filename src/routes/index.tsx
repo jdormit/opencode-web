@@ -14,6 +14,7 @@ import {
   sessionsQuery,
 } from '~/lib/oc'
 import type { Session } from '~/lib/oc'
+import type { MessageAttachment } from '~/lib/attachments'
 import {
   configuredModel,
   defaultModel,
@@ -117,7 +118,10 @@ function NewSessionPage() {
   const [error, setError] = React.useState<string>()
   const [sending, setSending] = React.useState(false)
 
-  const handleSend = async (text: string) => {
+  const handleSend = async (
+    text: string,
+    attachments: Array<MessageAttachment>,
+  ) => {
     if (!project) return
     setSending(true)
     setError(undefined)
@@ -142,6 +146,7 @@ function NewSessionPage() {
         model: modelRef,
         agent: agentName,
         text,
+        attachments,
       })
       await navigate({
         to: '/session/$sessionId',

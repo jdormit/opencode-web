@@ -4,14 +4,66 @@
   margin-block: 18px;
 }
 
-.userBubble {
+.userMessage {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
   max-width: 85%;
+}
+
+.userBubble {
+  max-width: 100%;
   background: var(--bg-inset);
   border-radius: var(--radius-l);
   border-bottom-right-radius: 6px;
   padding: 10px 14px;
   white-space: pre-wrap;
   font-size: 15px;
+}
+
+.userAttachments {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.userAttachmentImage {
+  width: 112px;
+  height: 88px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  object-fit: cover;
+  background: var(--bg-inset);
+}
+
+.userAttachmentFile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 220px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--bg-inset);
+  color: var(--text);
+  font-size: 12.5px;
+  text-decoration: none;
+}
+
+.userAttachmentFile > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userAttachmentType {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
 }
 
 .assistant {

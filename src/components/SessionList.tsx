@@ -1,8 +1,10 @@
 import * as React from 'react'
-import { Link } from '@tanstack/react-router'
-import { useQuery, useQueries } from '@tanstack/react-query'
+import { Link, useNavigate } from '@tanstack/react-router'
+import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query'
 import {
   SESSION_LIST_LIMIT,
+  LAST_PROJECT_DIRECTORY_KEY,
+  LAST_PROJECT_KEY,
   projectName,
   projectsQuery,
   sessionsAllQuery,
@@ -19,6 +21,7 @@ import {
   SearchIcon,
 } from './icons'
 import styles from './SessionList.module.css'
+import { OpenProjectSheet } from './OpenProjectSheet'
 
 const COLLAPSE_KEY = 'oc-collapsed-projects'
 
@@ -31,8 +34,11 @@ function readCollapsed(): Record<string, boolean> {
 }
 
 export function SessionListPanel({ onNavigate }: { onNavigate?: () => void }) {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const projects = useQuery(projectsQuery())
   const status = useQuery(sessionStatusQuery())
+  const [openProject, setOpenProject] = React.useState(false)
 
   const sessionQueries = useQueries({
     queries: (projects.data ?? []).map((p) => sessionsQuery(p.worktree)),
@@ -89,6 +95,15 @@ export function SessionListPanel({ onNavigate }: { onNavigate?: () => void }) {
         New session
       </Link>
 
+      <button
+        type="button"
+        className={styles.openProject}
+        onClick={() => setOpenProject(true)}
+      >
+        <PlusIcon size={17} />
+        Open project
+      </button>
+
       <div className={styles.search}>
         <SearchIcon size={15} />
         <input
@@ -143,6 +158,22 @@ export function SessionListPanel({ onNavigate }: { onNavigate?: () => void }) {
           Settings
         </Link>
       </footer>
+
+      <OpenProjectSheet
+        open={openProject}
+        onOpenChange={setOpenProject}
+        onSelect={(project, directory) => {
+          window.localStorage.setItem(LAST_PROJECT_KEY, project.id)
+          window.localStorage.setItem(LAST_PROJECT_DIRECTORY_KEY, directory)
+          void queryClient.prefetchQuery(sessionsQuery(directory))
+          void navigate({
+            to: '/',
+            search: { project: project.id, directory },
+          })
+          setOpenProject(false)
+          onNavigate?.()
+        }}
+      />
     </div>
   )
 }

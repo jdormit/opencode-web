@@ -6,6 +6,7 @@ import { findModel } from '~/lib/model-usage'
 import type { ModelRef } from '~/lib/model-usage'
 import { ArrowUpIcon, BotIcon, ChipIcon, FolderIcon, StopIcon } from './icons'
 import { AgentSheet, ModelSheet, ProjectSheet } from './pickers'
+import { OpenProjectSheet } from './OpenProjectSheet'
 import styles from './Composer.module.css'
 
 export interface ComposerProps {
@@ -18,7 +19,7 @@ export interface ComposerProps {
   /** When provided, a project picker pill is shown (new sessions only). */
   project?: Project
   directory?: string
-  onProjectChange?: (project: Project) => void
+  onProjectChange?: (project: Project, directory?: string) => void
 
   modelRef?: ModelRef
   onModelChange: (ref: ModelRef) => void
@@ -29,7 +30,7 @@ export interface ComposerProps {
   autoFocus?: boolean
 }
 
-type SheetName = 'project' | 'model' | 'agent' | null
+type SheetName = 'project' | 'openProject' | 'model' | 'agent' | null
 
 export function Composer({
   placeholder = 'Message opencode…',
@@ -54,6 +55,10 @@ export function Composer({
   const agents = useQuery(agentsQuery())
 
   const selectedModel = findModel(providers.data, modelRef)
+  const directoryLabel = directory
+    ?.replace(/\/+$/, '')
+    .split('/')
+    .at(-1)
 
   const resize = React.useCallback(() => {
     const el = textareaRef.current
@@ -108,7 +113,11 @@ export function Composer({
           >
             <FolderIcon size={14} />
             <span className={styles.pillLabel}>
-              {project ? projectName(project) : 'Choose project'}
+              {project
+                ? directory !== project.worktree && directoryLabel
+                  ? directoryLabel
+                  : projectName(project)
+                : 'Choose project'}
             </span>
           </button>
         )}
@@ -160,6 +169,17 @@ export function Composer({
           selected={project}
           onSelect={(p) => {
             onProjectChange(p)
+            setSheet(null)
+          }}
+          onOpenProject={() => setSheet('openProject')}
+        />
+      )}
+      {onProjectChange && (
+        <OpenProjectSheet
+          open={sheet === 'openProject'}
+          onOpenChange={(open) => setSheet(open ? 'openProject' : null)}
+          onSelect={(project, selectedDirectory) => {
+            onProjectChange(project, selectedDirectory)
             setSheet(null)
           }}
         />

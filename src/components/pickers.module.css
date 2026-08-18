@@ -79,6 +79,29 @@
   background: var(--bg-hover);
 }
 
+.openProjectButton {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 13px 16px;
+  border-radius: var(--radius-m);
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.openProjectButton span {
+  flex: 1;
+}
+
+.openProjectButton:hover {
+  filter: brightness(1.03);
+}
+
 .search {
   display: flex;
   align-items: center;

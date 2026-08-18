@@ -6,6 +6,8 @@ import {
   configQuery,
   createSession,
   deleteSession,
+  LAST_PROJECT_DIRECTORY_KEY,
+  LAST_PROJECT_KEY,
   projectsQuery,
   promptSession,
   providersQuery,
@@ -25,13 +27,20 @@ import { MenuIcon } from '~/components/icons'
 import styles from './index.module.css'
 
 export const Route = createFileRoute('/')({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { project?: string; directory?: string } => ({
+    ...(typeof search.project === 'string' ? { project: search.project } : {}),
+    ...(typeof search.directory === 'string'
+      ? { directory: search.directory }
+      : {}),
+  }),
   component: NewSessionPage,
 })
 
-const LAST_PROJECT_KEY = 'oc-last-project'
-
 function NewSessionPage() {
   const navigate = useNavigate()
+  const search = Route.useSearch()
   const queryClient = useQueryClient()
   const { openDrawer } = useShell()
 
@@ -57,19 +66,38 @@ function NewSessionPage() {
   }, [projects.data, sessionQueries])
 
   const [projectId, setProjectId] = React.useState<string>()
+  const [projectDirectory, setProjectDirectory] = React.useState<string>()
+  React.useEffect(() => {
+    if (
+      search.project &&
+      projects.data?.some((project) => project.id === search.project)
+    ) {
+      setProjectId(search.project)
+      setProjectDirectory(
+        search.directory ??
+          projects.data.find((project) => project.id === search.project)
+            ?.worktree,
+      )
+    }
+  }, [projects.data, search.directory, search.project])
   // Prefer the project the user last picked on this device.
   React.useEffect(() => {
     if (projectId) return
     const stored = window.localStorage.getItem(LAST_PROJECT_KEY)
     if (stored && projects.data?.some((p) => p.id === stored)) {
       setProjectId(stored)
+      setProjectDirectory(
+        window.localStorage.getItem(LAST_PROJECT_DIRECTORY_KEY) ??
+          projects.data.find((p) => p.id === stored)?.worktree,
+      )
     }
   }, [projectId, projects.data])
   const project =
     projects.data?.find((p) => p.id === projectId) ?? defaultProject
+  const directory = projectDirectory ?? project?.worktree
 
-  const providers = useQuery(providersQuery(project?.worktree))
-  const config = useQuery(configQuery(project?.worktree))
+  const providers = useQuery(providersQuery(directory))
+  const config = useQuery(configQuery(directory))
   const [modelOverride, setModelOverride] = React.useState<ModelRef>()
   const modelRef =
     modelOverride ??
@@ -94,19 +122,23 @@ function NewSessionPage() {
     setSending(true)
     setError(undefined)
     window.localStorage.setItem(LAST_PROJECT_KEY, project.id)
+    window.localStorage.setItem(
+      LAST_PROJECT_DIRECTORY_KEY,
+      directory ?? project.worktree,
+    )
     let session: Session | undefined
     try {
-      session = await createSession(project.worktree)
+      session = await createSession(directory ?? project.worktree)
       // Make the session visible to the sidebar and the session route
       // immediately, without waiting for the SSE event.
       const created = session
       queryClient.setQueryData<Array<Session>>(
-        ['sessions', project.worktree],
+        ['sessions', directory ?? project.worktree],
         (sessions) => [created, ...(sessions ?? [])],
       )
       queryClient.setQueryData(['session', created.id], created)
       if (modelRef) recordModelUse(modelRef)
-      await promptSession(session.id, project.worktree, {
+      await promptSession(session.id, directory ?? project.worktree, {
         model: modelRef,
         agent: agentName,
         text,
@@ -119,9 +151,12 @@ function NewSessionPage() {
       // Don't leave an orphaned empty session behind if the prompt failed.
       if (session) {
         const orphanId = session.id
-        void deleteSession(orphanId, project.worktree).catch(() => {})
+        void deleteSession(
+          orphanId,
+          directory ?? project.worktree,
+        ).catch(() => {})
         queryClient.setQueryData<Array<Session>>(
-          ['sessions', project.worktree],
+          ['sessions', directory ?? project.worktree],
           (sessions) => sessions?.filter((s) => s.id !== orphanId),
         )
       }
@@ -167,10 +202,26 @@ function NewSessionPage() {
           onSend={handleSend}
           sending={sending}
           project={project}
-          directory={project?.worktree}
-          onProjectChange={(p) => {
+          directory={directory}
+          onProjectChange={(p, selectedDirectory = p.worktree) => {
             setProjectId(p.id)
+            setProjectDirectory(selectedDirectory)
             window.localStorage.setItem(LAST_PROJECT_KEY, p.id)
+            window.localStorage.setItem(
+              LAST_PROJECT_DIRECTORY_KEY,
+              selectedDirectory,
+            )
+            void navigate({
+              to: '/',
+              search: {
+                project: p.id,
+                directory:
+                  selectedDirectory === p.worktree
+                    ? undefined
+                    : selectedDirectory,
+              },
+              replace: true,
+            })
           }}
           modelRef={modelRef}
           onModelChange={setModelOverride}

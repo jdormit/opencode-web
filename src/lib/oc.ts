@@ -5,8 +5,10 @@ import type {
   Agent,
   Config,
   ConfigProvidersResponse,
+  FileNode,
   Message,
   Part,
+  Path,
   Project,
   Session,
   SessionStatus,
@@ -17,9 +19,11 @@ export type {
   Config,
   ConfigProvidersResponse,
   Event,
+  FileNode,
   Message,
   Model,
   Part,
+  Path,
   Permission,
   Project,
   Provider,
@@ -135,11 +139,37 @@ export const projectsQuery = () =>
     staleTime: 30_000,
   })
 
+export const serverPathQuery = () =>
+  queryOptions({
+    queryKey: ['server-path'],
+    queryFn: () => ocFetch<Path & { home?: string }>('/path'),
+    staleTime: 5 * 60_000,
+  })
+
+export const directoryQuery = (directory: string) =>
+  queryOptions({
+    queryKey: ['directory', directory],
+    queryFn: async () => {
+      const entries = await ocFetch<Array<FileNode>>('/file', {
+        query: { directory, path: '' },
+      })
+      return entries
+        .filter((entry) => entry.type === 'directory')
+        .sort((a, b) => {
+          const hidden = Number(a.name.startsWith('.')) - Number(b.name.startsWith('.'))
+          return hidden || a.name.localeCompare(b.name)
+        })
+    },
+    staleTime: 60_000,
+  })
+
 /**
  * Window the sidebar to the most recent sessions and lazy-load full history
  * per project via sessionsAllQuery.
  */
 export const SESSION_LIST_LIMIT = 100
+export const LAST_PROJECT_KEY = 'oc-last-project'
+export const LAST_PROJECT_DIRECTORY_KEY = 'oc-last-project-directory'
 
 export function sessionListRequest(directory: string, limit: number) {
   return {
@@ -280,6 +310,12 @@ export const permissionsQuery = (sessionId: string, directory: string) =>
   })
 
 /* ---- Mutations ---- */
+
+export function openProject(directory: string) {
+  return ocFetch<Project>('/project/current', {
+    query: { directory },
+  })
+}
 
 export function createSession(directory: string, title?: string) {
   return ocFetch<Session>('/session', {

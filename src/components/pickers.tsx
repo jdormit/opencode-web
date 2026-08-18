@@ -5,7 +5,12 @@ import type { Agent, Project } from '~/lib/oc'
 import { modelKey, rankModels } from '~/lib/model-usage'
 import type { ModelRef, RankedModel } from '~/lib/model-usage'
 import { Sheet } from './Sheet'
-import { CheckIcon, ChevronRightIcon, SearchIcon } from './icons'
+import {
+  CheckIcon,
+  ChevronRightIcon,
+  FolderIcon,
+  SearchIcon,
+} from './icons'
 import styles from './pickers.module.css'
 
 /* ---- Project picker ---- */
@@ -15,11 +20,13 @@ export function ProjectSheet({
   onOpenChange,
   selected,
   onSelect,
+  onOpenProject,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   selected?: Project
   onSelect: (project: Project) => void
+  onOpenProject: () => void
 }) {
   const projects = useQuery(projectsQuery())
   const [search, setSearch] = React.useState('')
@@ -33,6 +40,15 @@ export function ProjectSheet({
       {(projects.data?.length ?? 0) > 6 && (
         <SearchInput value={search} onChange={setSearch} />
       )}
+      <button
+        type="button"
+        className={styles.openProjectButton}
+        onClick={onOpenProject}
+      >
+        <FolderIcon size={18} />
+        <span>Open new project</span>
+        <ChevronRightIcon size={16} />
+      </button>
       <ul className={styles.list}>
         {filtered.map((project) => (
           <li key={project.id}>

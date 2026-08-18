@@ -226,6 +226,41 @@ export const sessionQuery = (sessionId: string) =>
     staleTime: 30_000,
   })
 
+export const sessionDescendantIdsQuery = (
+  sessionId: string,
+  directory: string,
+) =>
+  queryOptions({
+    queryKey: ['session-descendants', sessionId],
+    queryFn: async () => {
+      const seen = new Set([sessionId])
+      const descendants: Array<string> = []
+      let parents = [sessionId]
+
+      while (parents.length > 0) {
+        const groups = await Promise.all(
+          parents.map((parentId) =>
+            ocFetch<Array<Session>>(`/session/${parentId}/children`, {
+              query: { directory },
+            }),
+          ),
+        )
+        const children = groups
+          .flat()
+          .filter((child) => {
+            if (seen.has(child.id)) return false
+            seen.add(child.id)
+            return true
+          })
+        descendants.push(...children.map((child) => child.id))
+        parents = children.map((child) => child.id)
+      }
+
+      return descendants
+    },
+    staleTime: 30_000,
+  })
+
 export const messagesQuery = (sessionId: string, directory: string) =>
   queryOptions({
     queryKey: ['messages', sessionId],

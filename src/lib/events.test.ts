@@ -2,7 +2,96 @@ import { describe, expect, test } from 'bun:test'
 import { QueryClient } from '@tanstack/react-query'
 import { applyEvent } from './events'
 import { permissionsForSession, questionsForSession } from './oc'
-import type { Event, PendingPermission, QuestionRequest } from './oc'
+import type {
+  Event,
+  MessageWithParts,
+  PendingPermission,
+  QuestionRequest,
+  Session,
+  ToolPart,
+} from './oc'
+
+const childSession = {
+  id: 'session-child',
+  projectID: 'project-1',
+  directory: '/workspace',
+  parentID: 'session-parent',
+  title: 'Child session',
+  version: '1',
+  time: { created: 1, updated: 2 },
+} as Session
+
+describe('subagent session events', () => {
+  test('caches child sessions without adding them to root session lists', () => {
+    const queryClient = new QueryClient()
+    queryClient.setQueryData<Array<Session>>(['sessions', '/workspace'], [])
+    queryClient.setQueryData<Array<string>>(
+      ['session-descendants', 'session-parent'],
+      [],
+    )
+
+    applyEvent(queryClient, '/workspace', {
+      type: 'session.created',
+      properties: { info: childSession },
+    } as Event)
+
+    expect(
+      queryClient.getQueryData<Session>(['session', childSession.id]),
+    ).toEqual(childSession)
+    expect(
+      queryClient.getQueryData<Array<Session>>(['sessions', '/workspace']),
+    ).toEqual([])
+    expect(
+      queryClient.getQueryState([
+        'session-descendants',
+        'session-parent',
+      ])?.isInvalidated,
+    ).toBe(true)
+  })
+
+  test('updates task parts when child metadata arrives', () => {
+    const queryClient = new QueryClient()
+    const message = {
+      info: {
+        id: 'message-1',
+        sessionID: 'session-parent',
+        role: 'assistant',
+      },
+      parts: [],
+    } as unknown as MessageWithParts
+    queryClient.setQueryData<Array<MessageWithParts>>(
+      ['messages', 'session-parent'],
+      [message],
+    )
+    const part = {
+      id: 'part-1',
+      sessionID: 'session-parent',
+      messageID: 'message-1',
+      type: 'tool',
+      callID: 'call-1',
+      tool: 'task',
+      state: {
+        status: 'running',
+        input: { description: 'Inspect the code' },
+        title: 'Inspect the code',
+        metadata: { sessionId: childSession.id },
+        time: { start: 1 },
+      },
+    } as unknown as ToolPart
+
+    applyEvent(queryClient, '/workspace', {
+      type: 'message.part.updated',
+      properties: { part },
+    } as unknown as Event)
+
+    expect(
+      queryClient.getQueryData<Array<MessageWithParts>>([
+        'messages',
+        'session-parent',
+      ])?.[0].parts,
+    ).toEqual([part])
+  })
+})
 
 const permission: PendingPermission = {
   id: 'permission-1',

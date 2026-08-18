@@ -66,6 +66,11 @@
   gap: 2px;
 }
 
+.headerSpacer {
+  width: 74px;
+  flex-shrink: 0;
+}
+
 .scroll {
   flex: 1;
   overflow-y: auto;

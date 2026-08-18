@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import {
   markQuestionEvent,
   questionsQuery,
@@ -34,16 +34,17 @@ export function buildQuestionAnswers(
 }
 
 export function QuestionSheet({
-  sessionId,
+  sessionIds,
   directory,
 }: {
-  sessionId: string
+  sessionIds: Array<string>
   directory: string
 }) {
   const queryClient = useQueryClient()
-  const { data: requests = [] } = useQuery(
-    questionsQuery(sessionId, directory),
-  )
+  const questionQueries = useQueries({
+    queries: sessionIds.map((sessionId) => questionsQuery(sessionId, directory)),
+  })
+  const requests = questionQueries.flatMap((query) => query.data ?? [])
   const request = requests[0]
   const [index, setIndex] = React.useState(0)
   const [answers, setAnswers] = React.useState<Array<QuestionAnswer>>([])
@@ -68,9 +69,9 @@ export function QuestionSheet({
   const last = index === request.questions.length - 1
 
   const removeRequest = () => {
-    markQuestionEvent(sessionId)
+    markQuestionEvent(request.sessionID)
     queryClient.setQueryData<Array<QuestionRequest>>(
-      ['questions', sessionId],
+      ['questions', request.sessionID],
       (current) => current?.filter((item) => item.id !== request.id),
     )
   }

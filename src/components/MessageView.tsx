@@ -1,14 +1,24 @@
 import * as React from 'react'
+import { Link } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
 import type { MessageWithParts, Part, ToolPart } from '~/lib/oc'
+import { messagesQuery } from '~/lib/oc'
 import { duration } from '~/lib/format'
 import { Markdown } from './Markdown'
-import { CheckIcon, ChevronRightIcon, XIcon } from './icons'
+import {
+  BotIcon,
+  CheckIcon,
+  ChevronRightIcon,
+  XIcon,
+} from './icons'
 import styles from './MessageView.module.css'
 
 export const MessageView = React.memo(function MessageView({
   message,
+  directory,
 }: {
   message: MessageWithParts
+  directory: string
 }) {
   if (message.info.role === 'user') {
     const text = message.parts
@@ -40,7 +50,7 @@ export const MessageView = React.memo(function MessageView({
   return (
     <div className={styles.assistant}>
       {message.parts.map((part) => (
-        <PartView key={part.id} part={part} />
+        <PartView key={part.id} part={part} directory={directory} />
       ))}
       {error && error.name !== 'MessageAbortedError' && (
         <div className={styles.error}>
@@ -87,7 +97,7 @@ function UserAttachment({
   )
 }
 
-function PartView({ part }: { part: Part }) {
+function PartView({ part, directory }: { part: Part; directory: string }) {
   switch (part.type) {
     case 'text':
       if (part.ignored || !part.text.trim()) return null
@@ -108,7 +118,11 @@ function PartView({ part }: { part: Part }) {
         </details>
       )
     case 'tool':
-      return <ToolRow part={part} />
+      return part.tool === 'task' ? (
+        <TaskToolRow part={part} directory={directory} />
+      ) : (
+        <ToolRow part={part} />
+      )
     case 'subtask':
       return (
         <div className={styles.toolChip}>
@@ -134,8 +148,125 @@ function PartView({ part }: { part: Part }) {
   }
 }
 
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object'
+    ? (value as Record<string, unknown>)
+    : undefined
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+export function taskSessionId(part: ToolPart): string | undefined {
+  if (part.tool !== 'task' || !('metadata' in part.state)) return undefined
+  return stringValue(recordValue(part.state.metadata)?.sessionId)
+}
+
+export function taskChildSessionIds(
+  messages: Array<MessageWithParts>,
+): Array<string> {
+  return [
+    ...new Set(
+      messages.flatMap((message) =>
+        message.parts.flatMap((part) => {
+          if (part.type !== 'tool') return []
+          const sessionId = taskSessionId(part)
+          return sessionId ? [sessionId] : []
+        }),
+      ),
+    ),
+  ]
+}
+
+export interface SubagentActivity {
+  toolCalls: number
+  lastTool?: string
+}
+
+export function subagentActivity(
+  messages: Array<MessageWithParts>,
+): SubagentActivity {
+  const tools = messages.flatMap((message) =>
+    message.parts.filter((part): part is ToolPart => part.type === 'tool'),
+  )
+  const last = tools.at(-1)
+  if (!last) return { toolCalls: 0 }
+
+  const title =
+    (last.state.status === 'running' || last.state.status === 'completed'
+      ? stringValue(last.state.title)
+      : undefined) ?? toolInputSummary(last)
+  return {
+    toolCalls: tools.length,
+    lastTool: title ? `${last.tool} ${title}` : last.tool,
+  }
+}
+
+function TaskToolRow({
+  part,
+  directory,
+}: {
+  part: ToolPart
+  directory: string
+}) {
+  const childSessionId = taskSessionId(part)
+  const childMessages = useQuery({
+    ...messagesQuery(childSessionId ?? '', directory),
+    enabled: !!childSessionId && !!directory,
+  })
+  const activity = subagentActivity(childMessages.data ?? [])
+  const input = recordValue(part.state.input)
+  const agent = stringValue(input?.subagent_type) ?? 'subagent'
+  const description = stringValue(input?.description) ?? 'Delegated task'
+  const callCount = `${activity.toolCalls} tool call${activity.toolCalls === 1 ? '' : 's'}`
+  const status = part.state.status
+
+  const content = (
+    <>
+      <span className={styles.taskIcon}>
+        {(status === 'pending' || status === 'running') && (
+          <span className={styles.spinner} />
+        )}
+        {status === 'completed' && <BotIcon size={16} />}
+        {status === 'error' && <XIcon size={15} className={styles.bad} />}
+      </span>
+      <span className={styles.taskText}>
+        <span className={styles.taskHeading}>
+          <span className={styles.taskAgent}>{agent}</span>
+          <span className={styles.taskDescription}>{description}</span>
+        </span>
+        <span className={styles.taskActivity}>
+          {childSessionId && childMessages.isLoading
+            ? 'Loading activity…'
+            : callCount}
+          {activity.lastTool && ` · Last: ${activity.lastTool}`}
+        </span>
+      </span>
+      {childSessionId && (
+        <ChevronRightIcon size={16} className={styles.taskArrow} />
+      )}
+    </>
+  )
+
+  if (!childSessionId) {
+    return <div className={styles.taskCard}>{content}</div>
+  }
+
+  return (
+    <Link
+      className={`${styles.taskCard} ${styles.taskLink}`}
+      to="/session/$sessionId"
+      params={{ sessionId: childSessionId }}
+      aria-label={`Open ${description} subagent session`}
+    >
+      {content}
+    </Link>
+  )
+}
+
 function toolInputSummary(part: ToolPart): string | undefined {
-  const input = part.state.status !== 'pending' ? part.state.input : undefined
+  const input = part.state.input
   if (!input) return undefined
   const candidates = ['command', 'pattern', 'filePath', 'path', 'query', 'url', 'description']
   for (const key of candidates) {

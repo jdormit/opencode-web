@@ -1,30 +1,37 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { permissionsQuery, respondPermission } from '~/lib/oc'
 import type { PendingPermission } from '~/lib/oc'
 import styles from './PermissionBanner.module.css'
 
 export function PermissionBanner({
-  sessionId,
+  sessionIds,
   directory,
 }: {
-  sessionId: string
+  sessionIds: Array<string>
   directory: string
 }) {
   const queryClient = useQueryClient()
-  const { data: permissions = [] } = useQuery(
-    permissionsQuery(sessionId, directory),
-  )
+  const permissionQueries = useQueries({
+    queries: sessionIds.map((sessionId) =>
+      permissionsQuery(sessionId, directory),
+    ),
+  })
 
-  const permission = permissions[0]
+  const permission = permissionQueries.flatMap((query) => query.data ?? [])[0]
   if (!permission) return null
 
   const respond = async (response: 'once' | 'always' | 'reject') => {
     queryClient.setQueryData<Array<PendingPermission>>(
-      ['permissions', sessionId],
+      ['permissions', permission.sessionID],
       (prev) => prev?.filter((p) => p.id !== permission.id),
     )
     try {
-      await respondPermission(sessionId, directory, permission.id, response)
+      await respondPermission(
+        permission.sessionID,
+        directory,
+        permission.id,
+        response,
+      )
     } catch (err) {
       console.error('Failed to respond to permission', err)
     }

@@ -16,6 +16,7 @@ import {
   promptSession,
   questionsQuery,
   renameSession,
+  sessionDescendantIdsQuery,
   sessionQuery,
   sessionStatusQuery,
 } from '~/lib/oc'
@@ -24,11 +25,19 @@ import type { MessageAttachment } from '~/lib/attachments'
 import { recordModelUse } from '~/lib/model-usage'
 import type { ModelRef } from '~/lib/model-usage'
 import { Composer } from '~/components/Composer'
-import { MessageView } from '~/components/MessageView'
+import {
+  MessageView,
+  taskChildSessionIds,
+} from '~/components/MessageView'
 import { PermissionBanner } from '~/components/PermissionBanner'
 import { QuestionSheet } from '~/components/QuestionSheet'
 import { useShell } from '~/components/shell'
-import { MenuIcon, PencilIcon, TrashIcon } from '~/components/icons'
+import {
+  ArrowLeftIcon,
+  MenuIcon,
+  PencilIcon,
+  TrashIcon,
+} from '~/components/icons'
 import styles from './session.module.css'
 
 interface SessionErrorInfo {
@@ -51,12 +60,14 @@ export const Route = createFileRoute('/session/$sessionId')({
       await queryClient.ensureQueryData(
         messagesQuery(session.id, session.directory),
       )
-      await queryClient.ensureQueryData(
-        permissionsQuery(session.id, session.directory),
-      )
-      await queryClient.ensureQueryData(
-        questionsQuery(session.id, session.directory),
-      )
+      if (!session.parentID) {
+        await queryClient.ensureQueryData(
+          permissionsQuery(session.id, session.directory),
+        )
+        await queryClient.ensureQueryData(
+          questionsQuery(session.id, session.directory),
+        )
+      }
     } catch {
       // Not found or server unreachable; the page renders its own states.
     }
@@ -73,6 +84,7 @@ function SessionPage() {
   const projects = useQuery(projectsQuery())
   const sessionQ = useQuery(sessionQuery(sessionId))
   const session = sessionQ.data
+  const parentSessionId = session?.parentID
 
   const project = projects.data?.find(
     (p) => p.worktree === session?.directory || p.id === session?.projectID,
@@ -81,6 +93,10 @@ function SessionPage() {
   const messages = useQuery({
     ...messagesQuery(sessionId, session?.directory ?? ''),
     enabled: !!session,
+  })
+  const descendants = useQuery({
+    ...sessionDescendantIdsQuery(sessionId, session?.directory ?? ''),
+    enabled: !!session && !session.parentID,
   })
 
   const status = useQuery(sessionStatusQuery())
@@ -93,6 +109,13 @@ function SessionPage() {
     : lastAssistant?.info.role === 'assistant' &&
       !lastAssistant.info.time.completed &&
       !lastAssistant.info.error
+  const requestSessionIds = [
+    ...new Set([
+      sessionId,
+      ...(descendants.data ?? []),
+      ...taskChildSessionIds(messages.data ?? []),
+    ]),
+  ]
 
   // Composer defaults follow the last thing the user sent.
   const lastUser = [...(messages.data ?? [])]
@@ -140,7 +163,7 @@ function SessionPage() {
     text: string,
     attachments: Array<MessageAttachment>,
   ) => {
-    if (!session) return
+    if (!session || session.parentID) return
     setSendError(undefined)
     queryClient.setQueryData(['session-error', sessionId], null)
     if (modelRef) recordModelUse(modelRef)
@@ -205,7 +228,9 @@ function SessionPage() {
   }
 
   const handleAbort = () => {
-    if (session) void abortSession(sessionId, session.directory)
+    if (session && !session.parentID) {
+      void abortSession(sessionId, session.directory)
+    }
   }
 
   // Session lists are cached per project worktree; fall back to the
@@ -216,7 +241,7 @@ function SessionPage() {
   ]
 
   const handleRename = async () => {
-    if (!session) return
+    if (!session || session.parentID) return
     const title = window.prompt('Rename session', session.title)
     if (!title || title === session.title) return
     try {
@@ -237,7 +262,7 @@ function SessionPage() {
   }
 
   const handleDelete = async () => {
-    if (!session) return
+    if (!session || session.parentID) return
     if (!window.confirm('Delete this session?')) return
     try {
       await deleteSession(sessionId, session.directory)
@@ -267,46 +292,69 @@ function SessionPage() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <button
-          type="button"
-          className={`${styles.iconButton} ${styles.menuButton}`}
-          onClick={openDrawer}
-          aria-label="Open sessions"
-        >
-          <MenuIcon size={18} />
-        </button>
+        {parentSessionId ? (
+          <Link
+            className={styles.iconButton}
+            to="/session/$sessionId"
+            params={{ sessionId: parentSessionId }}
+            aria-label="Back to parent session"
+          >
+            <ArrowLeftIcon size={18} />
+          </Link>
+        ) : (
+          <button
+            type="button"
+            className={`${styles.iconButton} ${styles.menuButton}`}
+            onClick={openDrawer}
+            aria-label="Open sessions"
+          >
+            <MenuIcon size={18} />
+          </button>
+        )}
         <div className={styles.headerText}>
           <span className={styles.title}>
             {session?.title || 'Untitled session'}
           </span>
-          {project && (
-            <span className={styles.subtitle}>{projectName(project)}</span>
-          )}
+          <span className={styles.subtitle}>
+            {parentSessionId
+              ? 'Read-only subagent session'
+              : project
+                ? projectName(project)
+                : ''}
+          </span>
         </div>
-        <div className={styles.headerActions}>
-          <button
-            type="button"
-            className={styles.iconButton}
-            onClick={() => void handleRename()}
-            aria-label="Rename session"
-          >
-            <PencilIcon size={16} />
-          </button>
-          <button
-            type="button"
-            className={styles.iconButton}
-            onClick={() => void handleDelete()}
-            aria-label="Delete session"
-          >
-            <TrashIcon size={16} />
-          </button>
-        </div>
+        {session && !parentSessionId ? (
+          <div className={styles.headerActions}>
+            <button
+              type="button"
+              className={styles.iconButton}
+              onClick={() => void handleRename()}
+              aria-label="Rename session"
+            >
+              <PencilIcon size={16} />
+            </button>
+            <button
+              type="button"
+              className={styles.iconButton}
+              onClick={() => void handleDelete()}
+              aria-label="Delete session"
+            >
+              <TrashIcon size={16} />
+            </button>
+          </div>
+        ) : (
+          <div className={styles.headerSpacer} />
+        )}
       </header>
 
       <div className={styles.scroll} ref={scrollRef} onScroll={handleScroll}>
         <div className={styles.messages}>
           {messages.data?.map((message) => (
-            <MessageView key={message.info.id} message={message} />
+            <MessageView
+              key={message.info.id}
+              message={message}
+              directory={session?.directory ?? ''}
+            />
           ))}
           {busy && (
             <div className={styles.typing}>
@@ -318,13 +366,12 @@ function SessionPage() {
         </div>
       </div>
 
-      <div className={styles.composerWrap}>
-        {session && (
+      {!parentSessionId && session && (
+        <div className={styles.composerWrap}>
           <PermissionBanner
-            sessionId={sessionId}
+            sessionIds={requestSessionIds}
             directory={session.directory}
           />
-        )}
         {(sendError || sessionError) && (
           <div className={styles.errorBanner}>
             {sendError ??
@@ -343,21 +390,23 @@ function SessionPage() {
             </button>
           </div>
         )}
-        <Composer
-          placeholder="Reply…"
-          onSend={handleSend}
-          busy={busy}
-          onAbort={handleAbort}
-          modelRef={modelRef}
-          directory={session?.directory}
-          onModelChange={setModelOverride}
-          agentName={agentName}
-          onAgentChange={setAgentOverride}
-        />
-        {session && (
-          <QuestionSheet sessionId={sessionId} directory={session.directory} />
-        )}
-      </div>
+          <Composer
+            placeholder="Reply…"
+            onSend={handleSend}
+            busy={busy}
+            onAbort={handleAbort}
+            modelRef={modelRef}
+            directory={session.directory}
+            onModelChange={setModelOverride}
+            agentName={agentName}
+            onAgentChange={setAgentOverride}
+          />
+          <QuestionSheet
+            sessionIds={requestSessionIds}
+            directory={session.directory}
+          />
+        </div>
+      )}
     </div>
   )
 }

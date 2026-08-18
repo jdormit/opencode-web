@@ -100,9 +100,12 @@ export function applyEvent(
     case 'session.updated': {
       const info = event.properties.info
       upsertSession(queryClient, directory ?? info.directory, info)
-      queryClient.setQueryData<Session>(['session', info.id], (prev) =>
-        prev ? info : prev,
-      )
+      queryClient.setQueryData<Session>(['session', info.id], info)
+      if (event.type === 'session.created' && info.parentID) {
+        void queryClient.invalidateQueries({
+          queryKey: ['session-descendants'],
+        })
+      }
       break
     }
     case 'session.deleted': {
@@ -114,6 +117,11 @@ export function applyEvent(
       }
       queryClient.removeQueries({ queryKey: ['messages', info.id] })
       queryClient.removeQueries({ queryKey: ['session', info.id] })
+      if (info.parentID) {
+        void queryClient.invalidateQueries({
+          queryKey: ['session-descendants'],
+        })
+      }
       break
     }
     case 'message.updated': {

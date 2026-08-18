@@ -24,7 +24,7 @@ interface GlobalEventEnvelope {
 /**
  * Session lists are cached per project worktree, but events can carry a
  * session directory that is a subdirectory of the worktree. Find the cached
- * list the session belongs to.
+ * lists that contain the session's directory.
  */
 function findSessionsCacheKeys(
   queryClient: QueryClient,
@@ -53,13 +53,19 @@ function upsertSession(
   info: Session,
 ) {
   if (info.parentID) return
-  const keys = findSessionsCacheKeys(queryClient, directory, info)
-  if (keys.length === 0) {
+  const matching = findSessionsCacheKeys(queryClient, directory, info)
+  if (matching.length === 0) {
     // Probably a session in a project we have not seen yet.
     void queryClient.invalidateQueries({ queryKey: ['projects'] })
     void queryClient.invalidateQueries({ queryKey: ['sessions'] })
     return
   }
+  const longest = Math.max(
+    ...matching.map((key) => (key[1] as string).length),
+  )
+  const keys = matching.filter(
+    (key) => (key[1] as string).length === longest,
+  )
   for (const key of keys) {
     queryClient.setQueryData<Array<Session>>(key, (sessions) => {
       if (!sessions) return sessions

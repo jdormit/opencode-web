@@ -21,6 +21,85 @@ const childSession = {
   time: { created: 1, updated: 2 },
 } as Session
 
+const rootSession = {
+  id: 'session-root',
+  projectID: 'project-nested',
+  directory: '/workspace/nested',
+  title: 'Nested project session',
+  version: '1',
+  time: { created: 1, updated: 2 },
+} as Session
+
+describe('root session events', () => {
+  test('updates only the most specific matching project cache', () => {
+    const queryClient = new QueryClient()
+    queryClient.setQueryData<Array<Session>>(['sessions', '/workspace'], [])
+    queryClient.setQueryData<Array<Session>>(
+      ['sessions', '/workspace/nested'],
+      [],
+    )
+    queryClient.setQueryData<Array<Session>>(
+      ['sessions-all', '/workspace'],
+      [],
+    )
+    queryClient.setQueryData<Array<Session>>(
+      ['sessions-all', '/workspace/nested'],
+      [],
+    )
+
+    applyEvent(queryClient, rootSession.directory, {
+      type: 'session.updated',
+      properties: { info: rootSession },
+    } as Event)
+
+    expect(
+      queryClient.getQueryData<Array<Session>>(['sessions', '/workspace']),
+    ).toEqual([])
+    expect(
+      queryClient.getQueryData<Array<Session>>([
+        'sessions',
+        '/workspace/nested',
+      ]),
+    ).toEqual([rootSession])
+    expect(
+      queryClient.getQueryData<Array<Session>>(['sessions-all', '/workspace']),
+    ).toEqual([])
+    expect(
+      queryClient.getQueryData<Array<Session>>([
+        'sessions-all',
+        '/workspace/nested',
+      ]),
+    ).toEqual([rootSession])
+  })
+
+  test('deletes stale entries from every matching project cache', () => {
+    const queryClient = new QueryClient()
+    queryClient.setQueryData<Array<Session>>(
+      ['sessions', '/workspace'],
+      [rootSession],
+    )
+    queryClient.setQueryData<Array<Session>>(
+      ['sessions', '/workspace/nested'],
+      [rootSession],
+    )
+
+    applyEvent(queryClient, rootSession.directory, {
+      type: 'session.deleted',
+      properties: { info: rootSession },
+    } as Event)
+
+    expect(
+      queryClient.getQueryData<Array<Session>>(['sessions', '/workspace']),
+    ).toEqual([])
+    expect(
+      queryClient.getQueryData<Array<Session>>([
+        'sessions',
+        '/workspace/nested',
+      ]),
+    ).toEqual([])
+  })
+})
+
 describe('subagent session events', () => {
   test('caches child sessions without adding them to root session lists', () => {
     const queryClient = new QueryClient()

@@ -13,6 +13,11 @@ import type {
   Session,
   SessionStatus,
 } from '@opencode-ai/sdk'
+import type {
+  QuestionAnswer,
+  QuestionInfo,
+  QuestionRequest,
+} from '@opencode-ai/sdk/v2'
 
 export type {
   Agent,
@@ -31,6 +36,7 @@ export type {
   SessionStatus,
   ToolPart,
 } from '@opencode-ai/sdk'
+export type { QuestionAnswer, QuestionInfo, QuestionRequest }
 
 export interface MessageWithParts {
   info: Message
@@ -309,6 +315,41 @@ export const permissionsQuery = (sessionId: string, directory: string) =>
     gcTime: Infinity,
   })
 
+export function questionsForSession(
+  questions: Array<QuestionRequest>,
+  sessionId: string,
+) {
+  return questions.filter((question) => question.sessionID === sessionId)
+}
+
+const questionRevisions = new Map<string, number>()
+
+export function markQuestionEvent(sessionId: string) {
+  questionRevisions.set(sessionId, (questionRevisions.get(sessionId) ?? 0) + 1)
+}
+
+export const questionsQuery = (sessionId: string, directory: string) =>
+  queryOptions({
+    queryKey: ['questions', sessionId],
+    queryFn: async () => {
+      let revision = questionRevisions.get(sessionId) ?? 0
+      while (true) {
+        const questions = await ocFetch<Array<QuestionRequest>>('/question', {
+          query: { directory },
+        })
+        const currentRevision = questionRevisions.get(sessionId) ?? 0
+        if (currentRevision === revision) {
+          return questionsForSession(questions, sessionId)
+        }
+        // An SSE update arrived during the request, so this snapshot may be
+        // older than the cache. Fetch once more against the new revision.
+        revision = currentRevision
+      }
+    },
+    staleTime: 0,
+    gcTime: Infinity,
+  })
+
 /* ---- Mutations ---- */
 
 export function openProject(directory: string) {
@@ -387,6 +428,25 @@ export function respondPermission(
       body: { response },
     },
   )
+}
+
+export function replyQuestion(
+  directory: string,
+  requestId: string,
+  answers: Array<QuestionAnswer>,
+) {
+  return ocFetch<boolean>(`/question/${requestId}/reply`, {
+    method: 'POST',
+    query: { directory },
+    body: { answers },
+  })
+}
+
+export function rejectQuestion(directory: string, requestId: string) {
+  return ocFetch<boolean>(`/question/${requestId}/reject`, {
+    method: 'POST',
+    query: { directory },
+  })
 }
 
 /* ---- Helpers ---- */

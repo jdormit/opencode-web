@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import { QueryClient } from '@tanstack/react-query'
 import { applyEvent } from './events'
-import { permissionsForSession } from './oc'
-import type { Event, PendingPermission } from './oc'
+import { permissionsForSession, questionsForSession } from './oc'
+import type { Event, PendingPermission, QuestionRequest } from './oc'
 
 const permission: PendingPermission = {
   id: 'permission-1',
@@ -83,6 +83,95 @@ describe('pending permissions', () => {
       queryClient.getQueryData<Array<PendingPermission>>([
         'permissions',
         permission.sessionID,
+      ]),
+    ).toEqual([])
+  })
+})
+
+const question: QuestionRequest = {
+  id: 'question-1',
+  sessionID: 'session-1',
+  questions: [
+    {
+      header: 'Approach',
+      question: 'Which approach should I use?',
+      options: [{ label: 'Simple', description: 'Make the smallest change' }],
+    },
+  ],
+}
+
+describe('pending questions', () => {
+  test('filters the server question list to the open session', () => {
+    expect(
+      questionsForSession(
+        [
+          question,
+          { ...question, id: 'question-2', sessionID: 'session-2' },
+        ],
+        'session-1',
+      ),
+    ).toEqual([question])
+  })
+
+  test('adds and updates question events in request order', () => {
+    const queryClient = new QueryClient()
+    const later = { ...question, id: 'question-2' }
+
+    applyEvent(queryClient, undefined, {
+      type: 'question.asked',
+      properties: later,
+    } as unknown as Event)
+    applyEvent(queryClient, undefined, {
+      type: 'question.asked',
+      properties: question,
+    } as unknown as Event)
+    applyEvent(queryClient, undefined, {
+      type: 'question.asked',
+      properties: {
+        ...question,
+        questions: [{ ...question.questions[0], header: 'Updated' }],
+      },
+    } as unknown as Event)
+
+    const requests = queryClient.getQueryData<Array<QuestionRequest>>([
+      'questions',
+      question.sessionID,
+    ])
+    expect(requests?.map((item) => item.id)).toEqual([
+      question.id,
+      later.id,
+    ])
+    expect(requests?.[0].questions[0].header).toBe('Updated')
+  })
+
+  test('removes replied and rejected questions', () => {
+    const queryClient = new QueryClient()
+    const second = { ...question, id: 'question-2' }
+    queryClient.setQueryData(
+      ['questions', question.sessionID],
+      [question, second],
+    )
+
+    applyEvent(queryClient, undefined, {
+      type: 'question.replied',
+      properties: {
+        sessionID: question.sessionID,
+        requestID: question.id,
+        answers: [['Simple']],
+      },
+    } as unknown as Event)
+    applyEvent(queryClient, undefined, {
+      type: 'question.rejected',
+      properties: {
+        sessionID: second.sessionID,
+        requestID: second.id,
+      },
+    } as unknown as Event)
+
+    expect(
+      queryClient.getQueryData<Array<QuestionRequest>>([
+        'questions',
+        question.sessionID,
       ]),
     ).toEqual([])
   })

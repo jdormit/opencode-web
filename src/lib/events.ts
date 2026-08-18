@@ -1,12 +1,14 @@
 import * as React from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { QueryClient } from '@tanstack/react-query'
+import { markQuestionEvent } from './oc'
 import type {
   Event,
   Message,
   MessageWithParts,
   Part,
   PendingPermission,
+  QuestionRequest,
   Session,
   SessionStatus,
 } from './oc'
@@ -75,6 +77,16 @@ function updateMessages(
   queryClient.setQueryData<Array<MessageWithParts>>(
     ['messages', sessionId],
     (messages) => (messages ? updater(messages) : messages),
+  )
+}
+
+function upsertQuestion(queryClient: QueryClient, question: QuestionRequest) {
+  queryClient.setQueryData<Array<QuestionRequest>>(
+    ['questions', question.sessionID],
+    (questions) => {
+      const rest = (questions ?? []).filter((item) => item.id !== question.id)
+      return [...rest, question].sort((a, b) => a.id.localeCompare(b.id))
+    },
   )
 }
 
@@ -236,6 +248,29 @@ export function applyEvent(
         )
         break
       }
+      if (unknown.type === 'question.asked' && unknown.properties) {
+        const question = unknown.properties as QuestionRequest
+        markQuestionEvent(question.sessionID)
+        upsertQuestion(queryClient, question)
+        break
+      }
+      if (
+        (unknown.type === 'question.replied' ||
+          unknown.type === 'question.rejected') &&
+        unknown.properties
+      ) {
+        const properties = unknown.properties as {
+          sessionID: string
+          requestID: string
+        }
+        markQuestionEvent(properties.sessionID)
+        queryClient.setQueryData<Array<QuestionRequest>>(
+          ['questions', properties.sessionID],
+          (questions) =>
+            questions?.filter((item) => item.id !== properties.requestID),
+        )
+        break
+      }
       if (unknown.type === 'message.part.delta' && unknown.properties) {
         const { sessionID, messageID, partID, field, delta } =
           unknown.properties
@@ -279,8 +314,9 @@ export function useGlobalEvents() {
       source = new EventSource('/api/proxy/global/event')
 
       source.onopen = () => {
-        // Close the gap between the permission snapshot and SSE connection.
+        // Close the gap between request snapshots and the SSE connection.
         void queryClient.invalidateQueries({ queryKey: ['permissions'] })
+        void queryClient.invalidateQueries({ queryKey: ['questions'] })
         if (hadError) {
           // We may have missed events while disconnected; resync.
           void queryClient.invalidateQueries({ queryKey: ['sessions'] })

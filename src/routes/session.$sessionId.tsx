@@ -14,6 +14,7 @@ import {
   projectName,
   projectsQuery,
   promptSession,
+  questionsQuery,
   renameSession,
   sessionQuery,
   sessionStatusQuery,
@@ -24,6 +25,7 @@ import type { ModelRef } from '~/lib/model-usage'
 import { Composer } from '~/components/Composer'
 import { MessageView } from '~/components/MessageView'
 import { PermissionBanner } from '~/components/PermissionBanner'
+import { QuestionSheet } from '~/components/QuestionSheet'
 import { useShell } from '~/components/shell'
 import { MenuIcon, PencilIcon, TrashIcon } from '~/components/icons'
 import styles from './session.module.css'
@@ -50,6 +52,9 @@ export const Route = createFileRoute('/session/$sessionId')({
       )
       await queryClient.ensureQueryData(
         permissionsQuery(session.id, session.directory),
+      )
+      await queryClient.ensureQueryData(
+        questionsQuery(session.id, session.directory),
       )
     } catch {
       // Not found or server unreachable; the page renders its own states.
@@ -329,6 +334,9 @@ function SessionPage() {
           agentName={agentName}
           onAgentChange={setAgentOverride}
         />
+        {session && (
+          <QuestionSheet sessionId={sessionId} directory={session.directory} />
+        )}
       </div>
     </div>
   )

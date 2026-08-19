@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test'
-import { forkSessionRequest, promptParts, sessionListRequest } from './oc'
+import {
+  commandRequest,
+  forkSessionRequest,
+  promptParts,
+  sessionListRequest,
+} from './oc'
 
 describe('sessionListRequest', () => {
   test('lists sessions globally by directory', () => {
@@ -31,6 +36,52 @@ describe('forkSessionRequest', () => {
       query: { directory: '/Users/test/project' },
       body: {},
     })
+  })
+})
+
+describe('commandRequest', () => {
+  test('sends the raw argument string for the server to expand', () => {
+    expect(
+      commandRequest('session-1', '/Users/test/project', {
+        command: 'review',
+        args: 'the last commit',
+        agent: 'build',
+        model: 'anthropic/claude-sonnet-4-5',
+      }),
+    ).toEqual({
+      path: '/session/session-1/command',
+      query: { directory: '/Users/test/project' },
+      body: {
+        command: 'review',
+        arguments: 'the last commit',
+        agent: 'build',
+        model: 'anthropic/claude-sonnet-4-5',
+      },
+    })
+  })
+
+  test('attaches files as parts', () => {
+    expect(
+      commandRequest('session-1', '/Users/test/project', {
+        command: 'review',
+        args: '',
+        attachments: [
+          {
+            id: 'local-1',
+            filename: 'screen.png',
+            mime: 'image/png',
+            url: 'data:image/png;base64,AAAA',
+          },
+        ],
+      }).body.parts,
+    ).toEqual([
+      {
+        type: 'file',
+        filename: 'screen.png',
+        mime: 'image/png',
+        url: 'data:image/png;base64,AAAA',
+      },
+    ])
   })
 })
 

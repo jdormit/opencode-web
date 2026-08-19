@@ -8,15 +8,27 @@ interface SheetProps {
   onOpenChange: (open: boolean) => void
   title: string
   children: React.ReactNode
+  /** Override where focus goes when the sheet closes. */
+  onCloseAutoFocus?: (event: Event) => void
 }
 
 /** Bottom sheet on mobile; centered and width-capped on larger screens. */
-export function Sheet({ open, onOpenChange, title, children }: SheetProps) {
+export function Sheet({
+  open,
+  onOpenChange,
+  title,
+  children,
+  onCloseAutoFocus,
+}: SheetProps) {
   return (
     <Drawer.Root open={open} onOpenChange={onOpenChange}>
       <Drawer.Portal>
         <Drawer.Overlay className={styles.overlay} />
-        <Drawer.Content className={styles.content} aria-describedby={undefined}>
+        <Drawer.Content
+          className={styles.content}
+          aria-describedby={undefined}
+          onCloseAutoFocus={onCloseAutoFocus}
+        >
           <div className={styles.handle} />
           <header className={styles.header}>
             <button

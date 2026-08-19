@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query'
 import {
   agentsQuery,
+  commandsQuery,
   configQuery,
   createSession,
   deleteSession,
@@ -11,10 +12,13 @@ import {
   projectsQuery,
   promptSession,
   providersQuery,
+  sendCommand,
   sessionsQuery,
 } from '~/lib/oc'
 import type { Session } from '~/lib/oc'
 import type { MessageAttachment } from '~/lib/attachments'
+import { commandSlashItems, parseCommandInput } from '~/lib/commands'
+import type { SlashItem } from '~/lib/commands'
 import {
   configuredModel,
   defaultModel,
@@ -118,6 +122,12 @@ function NewSessionPage() {
   const [error, setError] = React.useState<string>()
   const [sending, setSending] = React.useState(false)
 
+  const commands = useQuery(commandsQuery(directory))
+  const slashItems = React.useMemo<Array<SlashItem>>(
+    () => commandSlashItems(commands.data ?? []),
+    [commands.data],
+  )
+
   const handleSend = async (
     text: string,
     attachments: Array<MessageAttachment>,
@@ -136,18 +146,46 @@ function NewSessionPage() {
       // Make the session visible to the sidebar and the session route
       // immediately, without waiting for the SSE event.
       const created = session
+      // Dedupe: the session.created SSE event may land before this does.
       queryClient.setQueryData<Array<Session>>(
         ['sessions', directory ?? project.worktree],
-        (sessions) => [created, ...(sessions ?? [])],
+        (sessions) => [
+          created,
+          ...(sessions ?? []).filter((s) => s.id !== created.id),
+        ],
       )
       queryClient.setQueryData(['session', created.id], created)
       if (modelRef) recordModelUse(modelRef)
-      await promptSession(session.id, directory ?? project.worktree, {
-        model: modelRef,
-        agent: agentName,
-        text,
-        attachments,
-      })
+      const parsed = parseCommandInput(text)
+      if (parsed && commands.data?.some((c) => c.name === parsed.name)) {
+        // The command endpoint blocks until the turn completes; fire it and
+        // let the session page stream the transcript over SSE.
+        const created = session
+        sendCommand(session.id, directory ?? project.worktree, {
+          command: parsed.name,
+          args: parsed.args,
+          agent: agentName,
+          model: modelRef
+            ? `${modelRef.providerID}/${modelRef.modelID}`
+            : undefined,
+          attachments,
+        }).catch((err: unknown) => {
+          // Surface HTTP-level failures on the session page we navigated to.
+          queryClient.setQueryData(['session-error', created.id], {
+            name: 'CommandError',
+            data: {
+              message: err instanceof Error ? err.message : String(err),
+            },
+          })
+        })
+      } else {
+        await promptSession(session.id, directory ?? project.worktree, {
+          model: modelRef,
+          agent: agentName,
+          text,
+          attachments,
+        })
+      }
       await navigate({
         to: '/session/$sessionId',
         params: { sessionId: session.id },
@@ -232,6 +270,7 @@ function NewSessionPage() {
           onModelChange={setModelOverride}
           agentName={agentName}
           onAgentChange={setAgentOverride}
+          commands={slashItems}
           autoFocus
         />
       </div>

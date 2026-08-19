@@ -259,6 +259,48 @@
   margin: 0 auto;
 }
 
+.noticeBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-radius: var(--radius-m);
+  padding: 10px 14px;
+  font-size: 13.5px;
+  overflow-wrap: anywhere;
+}
+
+.noticeBanner button {
+  color: inherit;
+  flex-shrink: 0;
+  font-size: 13px;
+}
+
+.revertNotice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 6px 0;
+  padding: 9px 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-m);
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.revertNotice button {
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.revertNotice button:hover {
+  text-decoration: underline;
+}
+
 .errorBanner {
   display: flex;
   align-items: center;

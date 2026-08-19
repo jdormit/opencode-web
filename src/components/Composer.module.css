@@ -1,9 +1,56 @@
 .composer {
+  position: relative;
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-l);
   box-shadow: var(--shadow-pop);
   padding: 12px 12px 10px;
+}
+
+.commandPopover {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  max-height: min(288px, 38dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-pop);
+  padding: 4px;
+  z-index: 30;
+}
+
+.commandRow {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 7px;
+  text-align: left;
+}
+
+.commandRow[data-active='true'] {
+  background: var(--bg-hover);
+}
+
+.commandName {
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.commandDescription {
+  max-width: 100%;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .attachments {

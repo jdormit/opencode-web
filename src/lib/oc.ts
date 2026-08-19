@@ -3,6 +3,7 @@ import { queryOptions } from '@tanstack/react-query'
 import { getServerConfigFromRequest } from './settings.server'
 import type {
   Agent,
+  Command as SdkCommand,
   Config,
   ConfigProvidersResponse,
   FileNode,
@@ -38,6 +39,16 @@ export type {
   ToolPart,
 } from '@opencode-ai/sdk'
 export type { QuestionAnswer, QuestionInfo, QuestionRequest }
+
+/** `source` is not in the published SDK types yet but newer servers send it. */
+export type Command = SdkCommand & {
+  source?: 'command' | 'mcp' | 'skill'
+}
+
+export interface SkillInfo {
+  name: string
+  description?: string
+}
 
 export interface MessageWithParts {
   info: Message
@@ -284,6 +295,26 @@ export const agentsQuery = () =>
     staleTime: 5 * 60_000,
   })
 
+export const commandsQuery = (directory?: string) =>
+  queryOptions({
+    queryKey: ['commands', directory],
+    queryFn: () =>
+      ocFetch<Array<Command>>('/command', {
+        query: { directory },
+      }),
+    staleTime: 5 * 60_000,
+  })
+
+export const skillsQuery = (directory?: string) =>
+  queryOptions({
+    queryKey: ['skills', directory],
+    queryFn: () =>
+      ocFetch<Array<SkillInfo>>('/skill', {
+        query: { directory },
+      }),
+    staleTime: 5 * 60_000,
+  })
+
 export const providersQuery = (directory?: string) =>
   queryOptions({
     queryKey: ['providers', directory],
@@ -436,6 +467,108 @@ export function promptSession(
       agent: input.agent,
       parts: promptParts(input),
     },
+  })
+}
+
+export interface CommandInput {
+  command: string
+  /** Raw argument string; the server expands $1..$N and $ARGUMENTS. */
+  args: string
+  agent?: string
+  /** "providerID/modelID" */
+  model?: string
+  attachments?: Array<MessageAttachment>
+}
+
+export function commandRequest(
+  sessionId: string,
+  directory: string,
+  input: CommandInput,
+) {
+  return {
+    path: `/session/${sessionId}/command`,
+    query: { directory },
+    body: {
+      command: input.command,
+      arguments: input.args,
+      agent: input.agent,
+      model: input.model,
+      // Newer servers accept file parts alongside the command.
+      ...(input.attachments?.length
+        ? {
+            parts: input.attachments.map((attachment) => ({
+              type: 'file' as const,
+              mime: attachment.mime,
+              filename: attachment.filename,
+              url: attachment.url,
+            })),
+          }
+        : {}),
+    },
+  }
+}
+
+/**
+ * Execute a server-defined command. Unlike prompt_async this resolves only
+ * when the assistant turn finishes; callers should not block the UI on it.
+ */
+export function sendCommand(
+  sessionId: string,
+  directory: string,
+  input: CommandInput,
+) {
+  const request = commandRequest(sessionId, directory, input)
+  return ocFetch<MessageWithParts>(request.path, {
+    method: 'POST',
+    query: request.query,
+    body: request.body,
+  })
+}
+
+export function shareSession(sessionId: string, directory: string) {
+  return ocFetch<Session>(`/session/${sessionId}/share`, {
+    method: 'POST',
+    query: { directory },
+  })
+}
+
+export function unshareSession(sessionId: string, directory: string) {
+  return ocFetch<Session>(`/session/${sessionId}/share`, {
+    method: 'DELETE',
+    query: { directory },
+  })
+}
+
+export function summarizeSession(
+  sessionId: string,
+  directory: string,
+  model: { providerID: string; modelID: string },
+) {
+  return ocFetch<boolean>(`/session/${sessionId}/summarize`, {
+    method: 'POST',
+    query: { directory },
+    body: { providerID: model.providerID, modelID: model.modelID },
+  })
+}
+
+/** Revert the session to just before the given user message. */
+export function revertSession(
+  sessionId: string,
+  directory: string,
+  messageID: string,
+) {
+  return ocFetch<Session>(`/session/${sessionId}/revert`, {
+    method: 'POST',
+    query: { directory },
+    body: { messageID },
+  })
+}
+
+/** Clear an active revert, restoring all reverted messages. */
+export function unrevertSession(sessionId: string, directory: string) {
+  return ocFetch<Session>(`/session/${sessionId}/unrevert`, {
+    method: 'POST',
+    query: { directory },
   })
 }
 

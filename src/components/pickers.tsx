@@ -1,6 +1,11 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { projectName, projectsQuery, providersQuery } from '~/lib/oc'
+import {
+  projectName,
+  projectsQuery,
+  providersQuery,
+  skillsQuery,
+} from '~/lib/oc'
 import type { Agent, Project } from '~/lib/oc'
 import { modelKey, rankModels } from '~/lib/model-usage'
 import type { ModelRef, RankedModel } from '~/lib/model-usage'
@@ -219,6 +224,76 @@ export function AgentSheet({
         ))}
         {agents.length === 0 && (
           <li className={styles.empty}>No agents configured</li>
+        )}
+      </ul>
+    </Sheet>
+  )
+}
+
+/* ---- Skill picker ---- */
+
+export function SkillSheet({
+  open,
+  onOpenChange,
+  directory,
+  onSelect,
+  onCloseAutoFocus,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  directory?: string
+  onSelect: (name: string) => void
+  onCloseAutoFocus?: (event: Event) => void
+}) {
+  // The skill list includes each skill's full markdown body; only fetch it
+  // once the picker is actually opened.
+  const skills = useQuery({ ...skillsQuery(directory), enabled: open })
+  const [search, setSearch] = React.useState('')
+
+  React.useEffect(() => {
+    if (!open) setSearch('')
+  }, [open])
+
+  const filtered = (skills.data ?? []).filter(
+    (skill) =>
+      skill.name.toLowerCase().includes(search.toLowerCase()) ||
+      skill.description?.toLowerCase().includes(search.toLowerCase()),
+  )
+
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Skills"
+      onCloseAutoFocus={onCloseAutoFocus}
+    >
+      {(skills.data?.length ?? 0) > 6 && (
+        <SearchInput value={search} onChange={setSearch} />
+      )}
+      <ul className={styles.list}>
+        {filtered.map((skill) => (
+          <li key={skill.name}>
+            <button
+              type="button"
+              className={styles.row}
+              onClick={() => onSelect(skill.name)}
+            >
+              <span className={styles.rowText}>
+                <span className={styles.rowTitle}>{skill.name}</span>
+                {skill.description && (
+                  <span className={styles.rowSubtitle}>
+                    {skill.description}
+                  </span>
+                )}
+              </span>
+            </button>
+          </li>
+        ))}
+        {skills.isSuccess && filtered.length === 0 && (
+          <li className={styles.empty}>No skills found</li>
+        )}
+        {skills.isError && (
+          <li className={styles.empty}>Couldn't load skills</li>
         )}
       </ul>
     </Sheet>

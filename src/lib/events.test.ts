@@ -172,6 +172,44 @@ describe('subagent session events', () => {
   })
 })
 
+describe('session diff events', () => {
+  test('updates lightweight availability and revision state', () => {
+    const queryClient = new QueryClient()
+    queryClient.setQueryData(['session-diff-revision', rootSession.id], 3)
+
+    applyEvent(queryClient, rootSession.directory, {
+      type: 'session.diff',
+      properties: {
+        sessionID: rootSession.id,
+        diff: [
+          {
+            file: 'src/index.ts',
+            before: 'old',
+            after: 'new',
+            additions: 1,
+            deletions: 1,
+          },
+        ],
+      },
+    } as Event)
+
+    expect(
+      queryClient.getQueryData<boolean>(['session-diff-available', rootSession.id]),
+    ).toBe(true)
+    expect(
+      queryClient.getQueryData<number>(['session-diff-revision', rootSession.id]),
+    ).toBe(4)
+
+    applyEvent(queryClient, rootSession.directory, {
+      type: 'session.diff',
+      properties: { sessionID: rootSession.id, diff: [] },
+    } as Event)
+    expect(
+      queryClient.getQueryData<boolean>(['session-diff-available', rootSession.id]),
+    ).toBe(true)
+  })
+})
+
 const permission: PendingPermission = {
   id: 'permission-1',
   sessionID: 'session-1',

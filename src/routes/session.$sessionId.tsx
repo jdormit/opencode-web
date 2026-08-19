@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { Drawer } from 'vaul'
 import {
   Link,
   createFileRoute,
@@ -32,8 +33,11 @@ import {
 import { PermissionBanner } from '~/components/PermissionBanner'
 import { QuestionSheet } from '~/components/QuestionSheet'
 import { useShell } from '~/components/shell'
+import { useSessionDiff } from '~/lib/session-diff-client'
 import {
   ArrowLeftIcon,
+  ChevronDownIcon,
+  DiffIcon,
   MenuIcon,
   PencilIcon,
   TrashIcon,
@@ -43,6 +47,22 @@ import styles from './session.module.css'
 interface SessionErrorInfo {
   name: string
   data?: { message?: string }
+}
+
+const SessionDiffPanel = React.lazy(
+  () => import('~/components/SessionDiffPanel'),
+)
+
+function useDesktopLayout() {
+  const [desktop, setDesktop] = React.useState(false)
+  React.useEffect(() => {
+    const media = window.matchMedia('(min-width: 1024px)')
+    const update = () => setDesktop(media.matches)
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+  return desktop
 }
 
 function defaultAgent(agents: Array<{ name: string }> | undefined): string {
@@ -85,6 +105,28 @@ function SessionPage() {
   const sessionQ = useQuery(sessionQuery(sessionId))
   const session = sessionQ.data
   const parentSessionId = session?.parentID
+  const desktopLayout = useDesktopLayout()
+  const [diffOpen, setDiffOpen] = React.useState(false)
+  const titleMenuRef = React.useRef<HTMLDetailsElement>(null)
+
+  React.useEffect(() => {
+    const closeOutside = (event: PointerEvent) => {
+      const menu = titleMenuRef.current
+      if (menu?.open && !menu.contains(event.target as Node)) menu.open = false
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      const menu = titleMenuRef.current
+      if (event.key !== 'Escape' || !menu?.open) return
+      menu.open = false
+      menu.querySelector<HTMLElement>('summary')?.focus()
+    }
+    document.addEventListener('pointerdown', closeOutside)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [])
 
   const project = projects.data?.find(
     (p) => p.worktree === session?.directory || p.id === session?.projectID,
@@ -94,6 +136,23 @@ function SessionPage() {
     ...messagesQuery(sessionId, session?.directory ?? ''),
     enabled: !!session,
   })
+  const diffMessageIds = (messages.data ?? [])
+    .filter(
+      (message) =>
+        message.info.role === 'user' &&
+        (message.info.summary?.diffs.length ?? 0) > 0,
+    )
+    .map((message) => message.info.id)
+  const diff = useSessionDiff(
+    sessionId,
+    session?.directory,
+    session?.summary?.files,
+    diffMessageIds,
+    diffOpen,
+  )
+  React.useEffect(() => {
+    if (!diff.hasDiff) setDiffOpen(false)
+  }, [diff.hasDiff])
   const descendants = useQuery({
     ...sessionDescendantIdsQuery(sessionId, session?.directory ?? ''),
     enabled: !!session && !session.parentID,
@@ -289,8 +348,15 @@ function SessionPage() {
     )
   }
 
+  const diffPanel = (
+    <React.Suspense fallback={<div className={styles.diffLoading}>Loading changes…</div>}>
+      <SessionDiffPanel diff={diff} onClose={() => setDiffOpen(false)} />
+    </React.Suspense>
+  )
+
   return (
-    <div className={styles.page}>
+    <div className={styles.sessionLayout}>
+      <div className={styles.page}>
       <header className={styles.header}>
         {parentSessionId ? (
           <Link
@@ -312,9 +378,43 @@ function SessionPage() {
           </button>
         )}
         <div className={styles.headerText}>
-          <span className={styles.title}>
-            {session?.title || 'Untitled session'}
-          </span>
+          <div className={styles.titleRow}>
+            <span className={styles.title}>
+              {session?.title || 'Untitled session'}
+            </span>
+            {session && !parentSessionId && (
+              <details className={styles.titleMenu} ref={titleMenuRef}>
+                <summary aria-label="Session actions">
+                  <ChevronDownIcon size={14} />
+                </summary>
+                <div className={styles.titleMenuPanel}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (titleMenuRef.current) titleMenuRef.current.open = false
+                      titleMenuRef.current?.querySelector<HTMLElement>('summary')?.focus()
+                      void handleRename()
+                    }}
+                  >
+                    <PencilIcon size={15} />
+                    Rename session
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.titleMenuDanger}
+                    onClick={() => {
+                      if (titleMenuRef.current) titleMenuRef.current.open = false
+                      titleMenuRef.current?.querySelector<HTMLElement>('summary')?.focus()
+                      void handleDelete()
+                    }}
+                  >
+                    <TrashIcon size={15} />
+                    Delete session
+                  </button>
+                </div>
+              </details>
+            )}
+          </div>
           <span className={styles.subtitle}>
             {parentSessionId
               ? 'Read-only subagent session'
@@ -323,24 +423,19 @@ function SessionPage() {
                 : ''}
           </span>
         </div>
-        {session && !parentSessionId ? (
+        {session ? (
           <div className={styles.headerActions}>
-            <button
-              type="button"
-              className={styles.iconButton}
-              onClick={() => void handleRename()}
-              aria-label="Rename session"
-            >
-              <PencilIcon size={16} />
-            </button>
-            <button
-              type="button"
-              className={styles.iconButton}
-              onClick={() => void handleDelete()}
-              aria-label="Delete session"
-            >
-              <TrashIcon size={16} />
-            </button>
+            {diff.hasDiff && (
+              <button
+                type="button"
+                className={`${styles.iconButton} ${diffOpen ? styles.iconButtonActive : ''}`}
+                onClick={() => setDiffOpen((open) => !open)}
+                aria-label={diffOpen ? 'Close session changes' : 'Open session changes'}
+                aria-expanded={diffOpen}
+              >
+                <DiffIcon size={17} />
+              </button>
+            )}
           </div>
         ) : (
           <div className={styles.headerSpacer} />
@@ -406,6 +501,23 @@ function SessionPage() {
             directory={session.directory}
           />
         </div>
+      )}
+      </div>
+
+      {desktopLayout && diffOpen && diff.hasDiff && (
+        <aside className={styles.diffSidebar}>{diffPanel}</aside>
+      )}
+
+      {!desktopLayout && (
+        <Drawer.Root open={diffOpen && diff.hasDiff} onOpenChange={setDiffOpen} direction="right">
+          <Drawer.Portal>
+            <Drawer.Overlay className={styles.diffDrawerOverlay} />
+            <Drawer.Content className={styles.diffDrawer} aria-describedby={undefined}>
+              <Drawer.Title className={styles.srOnly}>Session changes</Drawer.Title>
+              {diffPanel}
+            </Drawer.Content>
+          </Drawer.Portal>
+        </Drawer.Root>
       )}
     </div>
   )

@@ -1,6 +1,15 @@
+.sessionLayout {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .page {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-width: 0;
   height: 100%;
   min-height: 0;
 }
@@ -31,6 +40,11 @@
   color: var(--text);
 }
 
+.iconButtonActive {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
 @media (min-width: 1024px) {
   .menuButton {
     visibility: hidden;
@@ -46,6 +60,14 @@
   text-align: center;
 }
 
+.titleRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .title {
   font-size: 14.5px;
   font-weight: 600;
@@ -53,6 +75,68 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.titleMenu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.titleMenu summary {
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  color: var(--text-faint);
+  cursor: pointer;
+  list-style: none;
+}
+
+.titleMenu summary::-webkit-details-marker {
+  display: none;
+}
+
+.titleMenu summary:hover,
+.titleMenu[open] summary {
+  background: var(--bg-inset);
+  color: var(--text);
+}
+
+.titleMenuPanel {
+  position: absolute;
+  top: calc(100% + 5px);
+  right: 0;
+  z-index: 30;
+  width: 170px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-pop);
+}
+
+.titleMenuPanel button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 9px;
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: left;
+}
+
+.titleMenuPanel button:hover,
+.titleMenuPanel button:focus-visible {
+  background: var(--bg-hover);
+  color: var(--text);
+  outline: none;
+}
+
+.titleMenuPanel .titleMenuDanger {
+  color: var(--danger);
 }
 
 .subtitle {
@@ -69,6 +153,50 @@
 .headerSpacer {
   width: 74px;
   flex-shrink: 0;
+}
+
+.diffSidebar {
+  width: clamp(360px, 38vw, 620px);
+  flex-shrink: 0;
+  min-width: 0;
+  border-left: 1px solid var(--border);
+}
+
+.diffDrawerOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: var(--bg-overlay);
+}
+
+.diffDrawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  z-index: 50;
+  width: min(94vw, 620px);
+  background: var(--bg);
+  outline: none;
+  box-shadow: var(--shadow-pop);
+}
+
+.diffLoading {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .scroll {

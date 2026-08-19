@@ -107,6 +107,12 @@ export function applyEvent(
       const info = event.properties.info
       upsertSession(queryClient, directory ?? info.directory, info)
       queryClient.setQueryData<Session>(['session', info.id], info)
+      if (info.summary?.files) {
+        queryClient.setQueryData(
+          ['session-diff-available', info.id],
+          true,
+        )
+      }
       if (event.type === 'session.created' && info.parentID) {
         void queryClient.invalidateQueries({
           queryKey: ['session-descendants'],
@@ -123,11 +129,31 @@ export function applyEvent(
       }
       queryClient.removeQueries({ queryKey: ['messages', info.id] })
       queryClient.removeQueries({ queryKey: ['session', info.id] })
+      queryClient.removeQueries({
+        queryKey: ['session-diff-available', info.id],
+      })
+      queryClient.removeQueries({
+        queryKey: ['session-diff-revision', info.id],
+      })
       if (info.parentID) {
         void queryClient.invalidateQueries({
           queryKey: ['session-descendants'],
         })
       }
+      break
+    }
+    case 'session.diff': {
+      const { sessionID, diff } = event.properties
+      if (diff.length > 0) {
+        queryClient.setQueryData(
+          ['session-diff-available', sessionID],
+          true,
+        )
+      }
+      queryClient.setQueryData<number>(
+        ['session-diff-revision', sessionID],
+        (revision) => (revision ?? 0) + 1,
+      )
       break
     }
     case 'message.updated': {

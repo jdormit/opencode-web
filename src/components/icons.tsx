@@ -101,6 +101,25 @@ export const FileIcon = (p: IconProps) => (
   </Icon>
 )
 
+export const DiffIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="6" cy="6" r="2" />
+    <circle cx="18" cy="6" r="2" />
+    <circle cx="6" cy="18" r="2" />
+    <path d="M6 8v8" />
+    <path d="M18 8v3a4 4 0 0 1-4 4H9" />
+    <polyline points="11 12 8 15 11 18" />
+  </Icon>
+)
+
+export const ExpandLinesIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <line x1="5" y1="12" x2="19" y2="12" />
+    <polyline points="8 8 12 4 16 8" />
+    <polyline points="8 16 12 20 16 16" />
+  </Icon>
+)
+
 export const CheckIcon = (p: IconProps) => (
   <Icon {...p}>
     <polyline points="20 6 9 17 4 12" />

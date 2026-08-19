@@ -5,9 +5,14 @@ of the Claude mobile apps. The goal is to make it pleasant to check on and
 drive coding agents from a phone, while scaling up to a desktop layout with
 standard responsive design.
 
+## Interface
+
+Use the same OpenCode projects and sessions from a persistent desktop workspace
+or a focused mobile chat view. Select either screenshot to view it full size.
+
 <p align="center">
-  <img src="docs/screenshots/desktop.png" alt="opencode-web desktop interface" width="720">
-  <img src="docs/screenshots/mobile.png" alt="opencode-web mobile interface" width="190">
+  <a href="docs/screenshots/desktop.png"><img src="docs/screenshots/desktop.png" alt="opencode-web desktop workspace" width="560"></a>
+  <a href="docs/screenshots/mobile.png"><img src="docs/screenshots/mobile.png" alt="opencode-web mobile chat view" width="145"></a>
 </p>
 
 ## Features

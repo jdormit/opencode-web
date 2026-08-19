@@ -68,13 +68,3 @@ can reach this app can drive your OpenCode server — which executes commands on
 your machine. Don't expose it to the public internet as-is; put it behind a
 VPN (e.g. Tailscale) or an authenticating reverse proxy if you want remote
 access.
-
-## Limitations
-
-This is an intentionally small v1 rather than a full replacement for the
-official web UI or TUI. File attachments, slash commands, diff views, session
-sharing, and forking aren't implemented yet. Session lists are windowed to the
-100 most recent per project (the server's default cap), with full history
-loaded per project on demand. Permission prompts arrive over the event stream,
-so a permission requested before you opened the app won't be visible until the
-next one fires.

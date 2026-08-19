@@ -446,6 +446,33 @@ export function abortSession(sessionId: string, directory: string) {
   })
 }
 
+export function forkSessionRequest(
+  sessionId: string,
+  directory: string,
+  messageID?: string,
+) {
+  return {
+    path: `/session/${sessionId}/fork`,
+    query: { directory },
+    // The server copies messages up to but excluding messageID; an empty
+    // body forks the whole session.
+    body: messageID ? { messageID } : {},
+  }
+}
+
+export function forkSession(
+  sessionId: string,
+  directory: string,
+  messageID?: string,
+) {
+  const request = forkSessionRequest(sessionId, directory, messageID)
+  return ocFetch<Session>(request.path, {
+    method: 'POST',
+    query: request.query,
+    body: request.body,
+  })
+}
+
 export function deleteSession(sessionId: string, directory: string) {
   return ocFetch<boolean>(`/session/${sessionId}`, {
     method: 'DELETE',

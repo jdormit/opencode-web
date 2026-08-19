@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { promptParts, sessionListRequest } from './oc'
+import { forkSessionRequest, promptParts, sessionListRequest } from './oc'
 
 describe('sessionListRequest', () => {
   test('lists sessions globally by directory', () => {
@@ -10,6 +10,26 @@ describe('sessionListRequest', () => {
         roots: 'true',
         limit: 100,
       },
+    })
+  })
+})
+
+describe('forkSessionRequest', () => {
+  test('forks before a specific message', () => {
+    expect(
+      forkSessionRequest('session-1', '/Users/test/project', 'message-2'),
+    ).toEqual({
+      path: '/session/session-1/fork',
+      query: { directory: '/Users/test/project' },
+      body: { messageID: 'message-2' },
+    })
+  })
+
+  test('forks the whole session when no message is given', () => {
+    expect(forkSessionRequest('session-1', '/Users/test/project')).toEqual({
+      path: '/session/session-1/fork',
+      query: { directory: '/Users/test/project' },
+      body: {},
     })
   })
 })

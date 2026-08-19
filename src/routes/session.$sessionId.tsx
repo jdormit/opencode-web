@@ -10,6 +10,7 @@ import {
   abortSession,
   agentsQuery,
   deleteSession,
+  forkSession,
   messagesQuery,
   permissionsQuery,
   projectName,
@@ -21,13 +22,15 @@ import {
   sessionQuery,
   sessionStatusQuery,
 } from '~/lib/oc'
-import type { MessageWithParts, Part, Session } from '~/lib/oc'
+import type { MessageWithParts, Part, Project, Session } from '~/lib/oc'
 import type { MessageAttachment } from '~/lib/attachments'
 import { recordModelUse } from '~/lib/model-usage'
 import type { ModelRef } from '~/lib/model-usage'
 import { Composer } from '~/components/Composer'
 import {
   MessageView,
+  endsAssistantTurn,
+  forkPoint,
   taskChildSessionIds,
 } from '~/components/MessageView'
 import { PermissionBanner } from '~/components/PermissionBanner'
@@ -320,6 +323,74 @@ function SessionPage() {
     }
   }
 
+  // Reads session/messages from the query cache so the callback stays
+  // stable and doesn't defeat MessageView memoization while streaming.
+  const [forkPending, setForkPending] = React.useState(false)
+  const forkPendingRef = React.useRef(false)
+  const handleFork = React.useCallback(
+    async (messageId: string) => {
+      if (forkPendingRef.current) return
+      const current = queryClient.getQueryData<Session>(['session', sessionId])
+      if (!current || current.parentID) return
+      const transcript =
+        queryClient.getQueryData<Array<MessageWithParts>>([
+          'messages',
+          sessionId,
+        ]) ?? []
+      const point = forkPoint(transcript, messageId)
+      if (!point) {
+        window.alert('The session is still syncing. Try again in a moment.')
+        return
+      }
+      forkPendingRef.current = true
+      setForkPending(true)
+      try {
+        const forked = await forkSession(
+          sessionId,
+          current.directory,
+          point.messageID,
+        )
+        // Make the fork visible to the sidebar and the session route
+        // immediately, without waiting for the SSE event.
+        const worktree =
+          queryClient
+            .getQueryData<Array<Project>>(['projects'])
+            ?.find(
+              (p) =>
+                p.worktree === current.directory ||
+                p.id === current.projectID,
+            )?.worktree ?? current.directory
+        // Dedupe: the session.created SSE event may land before the fork
+        // response does.
+        const prepend = (sessions: Array<Session> | undefined) => [
+          forked,
+          ...(sessions ?? []).filter((s) => s.id !== forked.id),
+        ]
+        queryClient.setQueryData<Array<Session>>(
+          ['sessions', worktree],
+          (sessions) => (sessions ? prepend(sessions) : undefined),
+        )
+        queryClient.setQueryData<Array<Session>>(
+          ['sessions-all', worktree],
+          (sessions) => (sessions ? prepend(sessions) : undefined),
+        )
+        queryClient.setQueryData(['session', forked.id], forked)
+        await navigate({
+          to: '/session/$sessionId',
+          params: { sessionId: forked.id },
+        })
+      } catch (err) {
+        window.alert(
+          `Fork failed: ${err instanceof Error ? err.message : String(err)}`,
+        )
+      } finally {
+        forkPendingRef.current = false
+        setForkPending(false)
+      }
+    },
+    [queryClient, sessionId, navigate],
+  )
+
   const handleDelete = async () => {
     if (!session || session.parentID) return
     if (!window.confirm('Delete this session?')) return
@@ -444,11 +515,17 @@ function SessionPage() {
 
       <div className={styles.scroll} ref={scrollRef} onScroll={handleScroll}>
         <div className={styles.messages}>
-          {messages.data?.map((message) => (
+          {messages.data?.map((message, index) => (
             <MessageView
               key={message.info.id}
               message={message}
               directory={session?.directory ?? ''}
+              onFork={
+                !parentSessionId && endsAssistantTurn(messages.data, index)
+                  ? handleFork
+                  : undefined
+              }
+              forkDisabled={forkPending}
             />
           ))}
           {busy && (

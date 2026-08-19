@@ -73,6 +73,37 @@
   margin-block: 10px;
 }
 
+.turnActions {
+  display: flex;
+  gap: 4px;
+  margin-left: -6px;
+}
+
+.turnActionButton {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.turnActionButton:not(:disabled):hover,
+.turnActionButton:not(:disabled):focus-visible {
+  color: var(--text-muted);
+  background: var(--bg-inset);
+}
+
+.turnActionButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .error {
   background: var(--danger-bg);
   color: var(--danger);

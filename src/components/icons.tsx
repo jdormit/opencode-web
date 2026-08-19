@@ -169,6 +169,16 @@ export const ChipIcon = (p: IconProps) => (
   </Icon>
 )
 
+export const ForkIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="6" cy="6" r="3" />
+    <circle cx="18" cy="6" r="3" />
+    <circle cx="12" cy="18" r="3" />
+    <path d="M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9" />
+    <path d="M12 12v3" />
+  </Icon>
+)
+
 export const BotIcon = (p: IconProps) => (
   <Icon {...p}>
     <rect x="4" y="8" width="16" height="12" rx="3" />

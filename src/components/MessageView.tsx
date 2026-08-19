@@ -9,16 +9,64 @@ import {
   BotIcon,
   CheckIcon,
   ChevronRightIcon,
+  ForkIcon,
   XIcon,
 } from './icons'
 import styles from './MessageView.module.css'
 
+export function isFinishedAssistantTurn(message: MessageWithParts): boolean {
+  return (
+    message.info.role === 'assistant' &&
+    Boolean(message.info.time.completed || message.info.error)
+  )
+}
+
+/**
+ * One agent turn can span several assistant messages (tool calls, retries,
+ * subtasks). Only the last message of such a run is a fork point.
+ */
+export function endsAssistantTurn(
+  messages: Array<MessageWithParts>,
+  index: number,
+): boolean {
+  const message = messages[index]
+  if (!message || message.info.role !== 'assistant') return false
+  const next = messages[index + 1]
+  return !next || next.info.role !== 'assistant'
+}
+
+/**
+ * The fork endpoint copies messages up to but excluding the given message,
+ * so forking *after* an assistant turn means forking at the next message.
+ * An empty messageID forks the whole session (used for the last turn).
+ * Returns null when the fork point can't be expressed safely — an unknown
+ * id, or a next message that is still an optimistic placeholder without a
+ * server id (forking then would copy messages past the chosen turn).
+ */
+export function forkPoint(
+  messages: Array<MessageWithParts>,
+  assistantMessageId: string,
+): { messageID?: string } | null {
+  const index = messages.findIndex(
+    (message) => message.info.id === assistantMessageId,
+  )
+  if (index === -1) return null
+  const next = messages[index + 1]
+  if (!next) return {}
+  if (next.info.id.startsWith('optimistic-')) return null
+  return { messageID: next.info.id }
+}
+
 export const MessageView = React.memo(function MessageView({
   message,
   directory,
+  onFork,
+  forkDisabled,
 }: {
   message: MessageWithParts
   directory: string
+  onFork?: (messageId: string) => void
+  forkDisabled?: boolean
 }) {
   if (message.info.role === 'user') {
     const text = message.parts
@@ -61,6 +109,20 @@ export const MessageView = React.memo(function MessageView({
       )}
       {error?.name === 'MessageAbortedError' && (
         <div className={styles.aborted}>Stopped</div>
+      )}
+      {onFork && isFinishedAssistantTurn(message) && (
+        <div className={styles.turnActions}>
+          <button
+            type="button"
+            className={styles.turnActionButton}
+            onClick={() => onFork(message.info.id)}
+            disabled={forkDisabled}
+            aria-label="Fork session from here"
+            title="Fork session from here"
+          >
+            <ForkIcon size={16} />
+          </button>
+        </div>
       )}
     </div>
   )

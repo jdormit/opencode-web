@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 import type { MessageWithParts, ToolPart } from '~/lib/oc'
 import {
+  endsAssistantTurn,
+  forkPoint,
+  isFinishedAssistantTurn,
   subagentActivity,
   taskChildSessionIds,
   taskSessionId,
@@ -34,6 +37,106 @@ function messages(parts: Array<ToolPart>): Array<MessageWithParts> {
     } as unknown as MessageWithParts,
   ]
 }
+
+function turn(
+  id: string,
+  role: 'user' | 'assistant',
+  time: Record<string, number> = { created: 1 },
+  error?: Record<string, unknown>,
+): MessageWithParts {
+  return {
+    info: { id, sessionID: 'session-1', role, time, error },
+    parts: [],
+  } as unknown as MessageWithParts
+}
+
+describe('isFinishedAssistantTurn', () => {
+  test('completed assistant turns are finished', () => {
+    expect(
+      isFinishedAssistantTurn(
+        turn('m1', 'assistant', { created: 1, completed: 2 }),
+      ),
+    ).toBe(true)
+  })
+
+  test('errored assistant turns are finished', () => {
+    expect(
+      isFinishedAssistantTurn(
+        turn('m1', 'assistant', { created: 1 }, { name: 'MessageAbortedError', data: {} }),
+      ),
+    ).toBe(true)
+  })
+
+  test('streaming assistant turns are not finished', () => {
+    expect(isFinishedAssistantTurn(turn('m1', 'assistant'))).toBe(false)
+  })
+
+  test('user messages are never finished turns', () => {
+    expect(
+      isFinishedAssistantTurn(turn('m1', 'user', { created: 1, completed: 2 })),
+    ).toBe(false)
+  })
+})
+
+describe('endsAssistantTurn', () => {
+  const transcript = [
+    turn('u1', 'user'),
+    turn('a1', 'assistant', { created: 1, completed: 2 }),
+    turn('a2', 'assistant', { created: 3, completed: 4 }),
+    turn('u2', 'user'),
+    turn('a3', 'assistant', { created: 5, completed: 6 }),
+  ]
+
+  test('an assistant message followed by a user message ends the turn', () => {
+    expect(endsAssistantTurn(transcript, 2)).toBe(true)
+  })
+
+  test('an assistant message followed by another assistant message does not', () => {
+    expect(endsAssistantTurn(transcript, 1)).toBe(false)
+  })
+
+  test('the last message of the transcript ends the turn', () => {
+    expect(endsAssistantTurn(transcript, 4)).toBe(true)
+  })
+
+  test('user messages never end an assistant turn', () => {
+    expect(endsAssistantTurn(transcript, 3)).toBe(false)
+  })
+
+  test('out-of-range indexes are not turn ends', () => {
+    expect(endsAssistantTurn(transcript, 5)).toBe(false)
+  })
+})
+
+describe('forkPoint', () => {
+  const transcript = [
+    turn('u1', 'user'),
+    turn('a1', 'assistant', { created: 1, completed: 2 }),
+    turn('u2', 'user'),
+    turn('a2', 'assistant', { created: 3, completed: 4 }),
+  ]
+
+  test('forks at the message after the assistant turn', () => {
+    expect(forkPoint(transcript, 'a1')).toEqual({ messageID: 'u2' })
+  })
+
+  test('forks the whole session for the last turn', () => {
+    expect(forkPoint(transcript, 'a2')).toEqual({})
+  })
+
+  test('refuses to fork at unknown messages', () => {
+    expect(forkPoint(transcript, 'missing')).toBeNull()
+  })
+
+  test('refuses to fork while the next message is an optimistic placeholder', () => {
+    expect(
+      forkPoint(
+        [...transcript, turn('optimistic-123', 'user')],
+        'a2',
+      ),
+    ).toBeNull()
+  })
+})
 
 describe('subagent task widgets', () => {
   test('reads the child session from task state metadata', () => {

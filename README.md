@@ -8,10 +8,11 @@ standard responsive design.
 ## Interface
 
 Use the same OpenCode projects and sessions from a persistent desktop workspace
-or a focused mobile chat view. Select either screenshot to view it full size.
+or a focused mobile chat view.
 
 <p align="center">
   <a href="docs/screenshots/desktop.png"><img src="docs/screenshots/desktop.png" alt="opencode-web desktop workspace" width="560"></a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
   <a href="docs/screenshots/mobile.png"><img src="docs/screenshots/mobile.png" alt="opencode-web mobile chat view" width="145"></a>
 </p>
 

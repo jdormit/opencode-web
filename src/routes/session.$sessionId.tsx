@@ -50,6 +50,7 @@ import {
   forkPoint,
   taskChildSessionIds,
 } from '~/components/MessageView'
+import { ConfirmDialog, PromptDialog } from '~/components/Dialog'
 import { PermissionBanner } from '~/components/PermissionBanner'
 import { QuestionSheet } from '~/components/QuestionSheet'
 import { useShell } from '~/components/shell'
@@ -261,6 +262,11 @@ function SessionPage() {
     (lastUser?.info.role === 'user' ? lastUser.info.agent : undefined) ??
     defaultAgent(agents.data)
 
+  const [renameOpen, setRenameOpen] = React.useState(false)
+  const [renamePending, setRenamePending] = React.useState(false)
+  const [deleteOpen, setDeleteOpen] = React.useState(false)
+  const [deletePending, setDeletePending] = React.useState(false)
+
   const [notice, setNotice] = React.useState<string>()
   const noticeTimer = React.useRef<ReturnType<typeof setTimeout>>(undefined)
   const showNotice = React.useCallback((message: string) => {
@@ -442,10 +448,13 @@ function SessionPage() {
     ['sessions-all', project?.worktree ?? session?.directory],
   ]
 
-  const handleRename = async () => {
+  const handleRename = async (title: string) => {
     if (!session || session.parentID) return
-    const title = window.prompt('Rename session', session.title)
-    if (!title || title === session.title) return
+    if (title === session.title) {
+      setRenameOpen(false)
+      return
+    }
+    setRenamePending(true)
     try {
       await renameSession(sessionId, session.directory, title)
       queryClient.setQueryData<Session>(['session', sessionId], (prev) =>
@@ -456,10 +465,14 @@ function SessionPage() {
           sessions?.map((s) => (s.id === sessionId ? { ...s, title } : s)),
         )
       }
+      setRenameOpen(false)
     } catch (err) {
-      window.alert(
+      setRenameOpen(false)
+      setSendError(
         `Rename failed: ${err instanceof Error ? err.message : String(err)}`,
       )
+    } finally {
+      setRenamePending(false)
     }
   }
 
@@ -480,7 +493,7 @@ function SessionPage() {
       // Without a message the whole session is forked (the /fork command).
       const point = messageId ? forkPoint(transcript, messageId) : {}
       if (!point) {
-        window.alert('The session is still syncing. Try again in a moment.')
+        setSendError('The session is still syncing. Try again in a moment.')
         return
       }
       forkPendingRef.current = true
@@ -521,7 +534,7 @@ function SessionPage() {
           params: { sessionId: forked.id },
         })
       } catch (err) {
-        window.alert(
+        setSendError(
           `Fork failed: ${err instanceof Error ? err.message : String(err)}`,
         )
       } finally {
@@ -652,7 +665,7 @@ function SessionPage() {
 
   const handleDelete = async () => {
     if (!session || session.parentID) return
-    if (!window.confirm('Delete this session?')) return
+    setDeletePending(true)
     try {
       await deleteSession(sessionId, session.directory)
       for (const key of listCacheKeys) {
@@ -661,11 +674,15 @@ function SessionPage() {
         )
       }
       queryClient.removeQueries({ queryKey: ['session', sessionId] })
+      setDeleteOpen(false)
       void navigate({ to: '/' })
     } catch (err) {
-      window.alert(
+      setDeleteOpen(false)
+      setSendError(
         `Delete failed: ${err instanceof Error ? err.message : String(err)}`,
       )
+    } finally {
+      setDeletePending(false)
     }
   }
 
@@ -723,7 +740,7 @@ function SessionPage() {
                     onClick={() => {
                       if (titleMenuRef.current) titleMenuRef.current.open = false
                       titleMenuRef.current?.querySelector<HTMLElement>('summary')?.focus()
-                      void handleRename()
+                      setRenameOpen(true)
                     }}
                   >
                     <PencilIcon size={15} />
@@ -735,7 +752,7 @@ function SessionPage() {
                     onClick={() => {
                       if (titleMenuRef.current) titleMenuRef.current.open = false
                       titleMenuRef.current?.querySelector<HTMLElement>('summary')?.focus()
-                      void handleDelete()
+                      setDeleteOpen(true)
                     }}
                   >
                     <TrashIcon size={15} />
@@ -867,6 +884,32 @@ function SessionPage() {
             directory={session.directory}
           />
         </div>
+      )}
+
+      {session && !parentSessionId && (
+        <>
+          <PromptDialog
+            open={renameOpen}
+            onOpenChange={setRenameOpen}
+            title="Rename session"
+            label="Session title"
+            placeholder="Untitled session"
+            initialValue={session.title}
+            confirmLabel={renamePending ? 'Saving…' : 'Save'}
+            busy={renamePending}
+            onSubmit={(title) => void handleRename(title)}
+          />
+          <ConfirmDialog
+            open={deleteOpen}
+            onOpenChange={setDeleteOpen}
+            title="Delete session?"
+            message="This permanently removes the session and its messages. It cannot be undone."
+            confirmLabel={deletePending ? 'Deleting…' : 'Delete'}
+            busy={deletePending}
+            danger
+            onConfirm={() => void handleDelete()}
+          />
+        </>
       )}
       </div>
 

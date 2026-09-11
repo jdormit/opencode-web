@@ -1,13 +1,36 @@
 import { describe, expect, test } from 'bun:test'
-import type { MessageWithParts, ToolPart } from '~/lib/oc'
+import type { MessageWithParts, Part, ToolPart } from '~/lib/oc'
 import {
   endsAssistantTurn,
   forkPoint,
+  groupParts,
   isFinishedAssistantTurn,
+  reasoningLabel,
   subagentActivity,
   taskChildSessionIds,
   taskSessionId,
 } from './MessageView'
+
+function part(id: string, type: string, extra: Record<string, unknown> = {}): Part {
+  return {
+    id,
+    sessionID: 'session-1',
+    messageID: 'message-1',
+    type,
+    ...extra,
+  } as unknown as Part
+}
+
+function text(id: string, value: string) {
+  return part(id, 'text', { text: value }) as Extract<Part, { type: 'text' }>
+}
+
+function reasoning(id: string, text: string) {
+  return part(id, 'reasoning', {
+    text,
+    time: { start: 1, end: 2 },
+  }) as Extract<Part, { type: 'reasoning' }>
+}
 
 function tool(
   id: string,
@@ -230,5 +253,66 @@ describe('subagent task widgets', () => {
         ]),
       ),
     ).toEqual(['session-child'])
+  })
+})
+
+describe('groupParts', () => {
+  test('merges contiguous reasoning parts into one group', () => {
+    const a = reasoning('r1', '**One**')
+    const b = reasoning('r2', '**Two**')
+    expect(groupParts([a, b])).toEqual([{ kind: 'reasoning', parts: [a, b] }])
+  })
+
+  test('visible parts split reasoning groups and pass through in order', () => {
+    const a = reasoning('r1', '**One**')
+    const t = tool('t1', 'bash', { status: 'completed' })
+    const b = reasoning('r2', '**Two**')
+    const done = text('x1', 'done')
+    expect(groupParts([a, t, b, done])).toEqual([
+      { kind: 'reasoning', parts: [a] },
+      { kind: 'part', part: t },
+      { kind: 'reasoning', parts: [b] },
+      { kind: 'part', part: done },
+    ])
+  })
+
+  test('drops parts that render nothing without splitting a group', () => {
+    const a = reasoning('r1', '**One**')
+    const finish = part('sf', 'step-finish')
+    const start = part('ss', 'step-start')
+    const blank = text('x1', '  ')
+    const b = reasoning('r2', '**Two**')
+    expect(groupParts([start, a, finish, start, blank, b])).toEqual([
+      { kind: 'reasoning', parts: [a, b] },
+    ])
+  })
+
+  test('drops reasoning parts with no text', () => {
+    const empty = reasoning('r1', '  \n')
+    const b = reasoning('r2', '**Two**')
+    expect(groupParts([empty, b])).toEqual([
+      { kind: 'reasoning', parts: [b] },
+    ])
+    expect(groupParts([empty])).toEqual([])
+  })
+
+  test('leaves messages without reasoning untouched', () => {
+    const t = tool('t1', 'bash', { status: 'completed' })
+    expect(groupParts([t])).toEqual([{ kind: 'part', part: t }])
+    expect(groupParts([])).toEqual([])
+  })
+})
+
+describe('reasoningLabel', () => {
+  test('spans from the first start to the last end', () => {
+    const a = { ...reasoning('r1', 'a'), time: { start: 1_000, end: 3_000 } }
+    const b = { ...reasoning('r2', 'b'), time: { start: 4_000, end: 13_000 } }
+    expect(reasoningLabel([a, b])).toBe('Thought for 12s')
+  })
+
+  test('shows an in-progress label while the last part is streaming', () => {
+    const a = { ...reasoning('r1', 'a'), time: { start: 1_000, end: 3_000 } }
+    const b = { ...reasoning('r2', 'b'), time: { start: 4_000 } }
+    expect(reasoningLabel([a, b])).toBe('Thinking…')
   })
 })

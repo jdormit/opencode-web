@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import type { MessageWithParts, Part, ToolPart } from '~/lib/oc'
+import type { MessageWithParts, Part, ReasoningPart, ToolPart } from '~/lib/oc'
 import { messagesQuery } from '~/lib/oc'
 import { duration } from '~/lib/format'
 import { Markdown } from './Markdown'
@@ -57,6 +57,60 @@ export function forkPoint(
   return { messageID: next.info.id }
 }
 
+type VisiblePart = Exclude<Part, ReasoningPart>
+
+export type PartGroup =
+  | { kind: 'part'; part: VisiblePart }
+  | { kind: 'reasoning'; parts: Array<ReasoningPart> }
+
+function rendersNothing(part: Part): boolean {
+  switch (part.type) {
+    case 'text':
+      return part.ignored || !part.text.trim()
+    case 'reasoning':
+      return !part.text.trim()
+    case 'tool':
+    case 'subtask':
+    case 'patch':
+    case 'retry':
+      return false
+    default:
+      return true
+  }
+}
+
+/**
+ * Providers stream one reasoning part per summary step, so a single stretch
+ * of thinking often arrives as several adjacent parts. Fold them into one
+ * group so they render as a single collapsible block. Parts that render
+ * nothing (step boundaries, empty text) are dropped and don't break a run.
+ */
+export function groupParts(parts: Array<Part>): Array<PartGroup> {
+  const groups: Array<PartGroup> = []
+  let open: Extract<PartGroup, { kind: 'reasoning' }> | null = null
+  for (const part of parts) {
+    if (rendersNothing(part)) continue
+    if (part.type !== 'reasoning') {
+      open = null
+      groups.push({ kind: 'part', part })
+    } else if (open) {
+      open.parts.push(part)
+    } else {
+      open = { kind: 'reasoning', parts: [part] }
+      groups.push(open)
+    }
+  }
+  return groups
+}
+
+export function reasoningLabel(parts: Array<ReasoningPart>): string {
+  const first = parts[0]
+  const last = parts[parts.length - 1]
+  return last.time.end
+    ? `Thought for ${duration(first.time.start, last.time.end)}`
+    : 'Thinking…'
+}
+
 export const MessageView = React.memo(function MessageView({
   message,
   directory,
@@ -97,9 +151,13 @@ export const MessageView = React.memo(function MessageView({
   const error = message.info.error
   return (
     <div className={styles.assistant}>
-      {message.parts.map((part) => (
-        <PartView key={part.id} part={part} directory={directory} />
-      ))}
+      {groupParts(message.parts).map((group) =>
+        group.kind === 'reasoning' ? (
+          <ReasoningGroup key={group.parts[0].id} parts={group.parts} />
+        ) : (
+          <PartView key={group.part.id} part={group.part} directory={directory} />
+        ),
+      )}
       {error && error.name !== 'MessageAbortedError' && (
         <div className={styles.error}>
           {'message' in error.data && typeof error.data.message === 'string'
@@ -159,26 +217,32 @@ function UserAttachment({
   )
 }
 
-function PartView({ part, directory }: { part: Part; directory: string }) {
+function ReasoningGroup({ parts }: { parts: Array<ReasoningPart> }) {
+  return (
+    <details className={styles.reasoning}>
+      <summary>
+        <ChevronRightIcon size={13} className={styles.disclosure} />
+        {reasoningLabel(parts)}
+      </summary>
+      <div className={styles.reasoningBody}>
+        {parts.map((part) => (
+          <Markdown key={part.id}>{part.text}</Markdown>
+        ))}
+      </div>
+    </details>
+  )
+}
+
+function PartView({
+  part,
+  directory,
+}: {
+  part: VisiblePart
+  directory: string
+}) {
   switch (part.type) {
     case 'text':
-      if (part.ignored || !part.text.trim()) return null
       return <Markdown>{part.text}</Markdown>
-    case 'reasoning':
-      if (!part.text.trim()) return null
-      return (
-        <details className={styles.reasoning}>
-          <summary>
-            <ChevronRightIcon size={13} className={styles.disclosure} />
-            {part.time.end
-              ? `Thought for ${duration(part.time.start, part.time.end)}`
-              : 'Thinking…'}
-          </summary>
-          <div className={styles.reasoningBody}>
-            <Markdown>{part.text}</Markdown>
-          </div>
-        </details>
-      )
     case 'tool':
       return part.tool === 'task' ? (
         <TaskToolRow part={part} directory={directory} />

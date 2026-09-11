@@ -34,6 +34,7 @@ export type {
   Permission,
   Project,
   Provider,
+  ReasoningPart,
   Session,
   SessionStatus,
   ToolPart,

@@ -25,56 +25,45 @@ or a focused mobile chat view.
 - Switch projects, models, and agents from mobile-friendly pickers.
 - Run built-in commands, server-defined commands, and OpenCode skills from the
   composer.
-- Share, fork, compact, undo, redo, and export sessions.
+- Fork, compact, undo, redo, and export sessions.
+- Inspect nested Code Mode calls and their progress inside `execute` tools.
 - Install the responsive interface on a phone or use it in a desktop browser.
 
 ## How it works
 
 opencode-web is an alternate client for OpenCode. It does not run coding agents
-itself. A separate `opencode serve` process owns the projects and sessions,
-runs the agents, and executes their tools. This app connects to that server and
-presents the same data and controls through a responsive web interface.
+itself. OpenCode 2's local shared background service owns the projects and
+sessions, runs the agents, and executes their tools.
 
 The web app has its own server process, which proxies requests from the browser
-to the configured OpenCode server. That connection is made by the machine
-running opencode-web, so the default `localhost` OpenCode server address works
-as long as the OpenCode server and opencode-web are running on the same
-device, even if you are accessing the opencode-web client from a different
-device. You can point the app at a different OpenCode server from the settings
-page.
+to that service using `@opencode/client`. It discovers the service through its
+local registration file and keeps service credentials on the server. If the
+service is stopped, it runs `opencode service start`, which applies your
+`service.json` configuration, then discovers it again. The browser needs only
+the opencode-web address. Both server processes run on the same computer.
 
 OpenCode remains the source of truth. Sessions created in this app are visible
 in other OpenCode clients, and changes made elsewhere stream back into the web
-interface.
+interface. The app projects V2 streaming events into the same message shapes
+returned by the history API. After an event connection drops, it reconnects
+and reloads cached data to recover missed events.
 
 ## Running it
 
 You need [Bun](https://bun.sh) and the
-[OpenCode CLI](https://opencode.ai/docs/cli/). Start an OpenCode server in one
-terminal. The directory where you run it becomes available as a project:
-
-```sh
-opencode serve
-```
-
-In another terminal, install the dependencies and start opencode-web:
+[OpenCode 2 CLI](https://opencode.ai/v2/docs/). Make sure `opencode` on the
+web server's PATH is version 2.0.29 or later. Install dependencies and start
+opencode-web:
 
 ```sh
 bun install
 bun run dev
 ```
 
-Open `http://localhost:3000`. The app connects to the OpenCode server at
-`http://localhost:4096` by default.
-
-Set `VITE_OPENCODE_SERVER_URL` to override the OpenCode server URL used when
-the client has not saved one in its settings. It defaults to
-`http://localhost:4096`.
-
-If your OpenCode server sets `OPENCODE_SERVER_PASSWORD`, enter the password on
-the settings page. The app forwards it to OpenCode using basic authentication.
-Only save a password when you access opencode-web through HTTPS or an encrypted
-VPN; plain HTTP exposes the credential to the network.
+Open `http://localhost:3000` and use **Open project** to choose a directory.
+The shared service starts automatically if needed. Configure OpenCode through
+its own configuration files; there is no server URL or password to enter in
+opencode-web.
 
 ### Phone access
 
@@ -84,10 +73,14 @@ Bind the development server to your network interface:
 bun run dev -- --host 0.0.0.0
 ```
 
-Open `http://<your-computer-ip>:3000` from a phone on the same network. Leave
-the OpenCode server setting at `http://localhost:4096` when both server
-processes run on your computer; the opencode-web server resolves that address,
-not the phone.
+Open `http://<your-computer-ip>:3000` from a phone on the same network.
+The OpenCode service can stay bound to loopback: the opencode-web server
+connects to it on your phone's behalf.
+
+OpenCode's `opencode pair` and `opencode pair --remote` connect devices to
+OpenCode's own interface. Their pairing links and service tunnel do not expose
+this separate web app. To reach opencode-web remotely, expose its web port
+through your VPN or authenticated HTTPS reverse proxy.
 
 To install the interface, use **Add to Home Screen** from Safari's share menu
 on iOS. On Android, use your browser's **Install app** or **Add to Home screen**
@@ -127,16 +120,29 @@ bun run build
 
 ## Security caveat
 
-The proxy route is intentionally unauthenticated, and each client can choose
-the server URL it targets. Anyone who can reach opencode-web can therefore
-drive your OpenCode server, which executes commands on your machine. They can
-also use the proxy to send requests to other services reachable from the
-opencode-web host.
+The proxy route is intentionally unauthenticated. Anyone who can reach
+opencode-web can drive your local OpenCode service, which executes commands
+on your machine. Service discovery fixes the upstream destination; browsers
+cannot choose an arbitrary server URL.
 
 This is intended for personal use on a trusted machine and network. Do not
 expose it directly to the public internet. Use an encrypted VPN such as
 Tailscale, or an HTTPS reverse proxy that authenticates every request, for
 remote access.
+
+## Using OpenCode 1.x
+
+The `v1` git tag is the last V1-compatible version:
+
+```sh
+git clone --branch v1 https://github.com/jdormit/opencode-web.git
+cd opencode-web
+bun install
+bun run dev
+```
+
+Follow that version's README for its `opencode serve` setup. V2 has no session
+sharing endpoint, so share and unshare are unavailable in the current app.
 
 ## License
 

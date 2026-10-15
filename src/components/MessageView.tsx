@@ -1,422 +1,242 @@
 import * as React from 'react'
 import { Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import type { MessageWithParts, Part, ReasoningPart, ToolPart } from '~/lib/oc'
 import { messagesQuery } from '~/lib/oc'
+import type { Message, Part, ReasoningPart, ToolPart } from '~/lib/oc'
 import { duration } from '~/lib/format'
 import { Markdown } from './Markdown'
-import {
-  BotIcon,
-  CheckIcon,
-  ChevronRightIcon,
-  ForkIcon,
-  XIcon,
-} from './icons'
+import { CheckIcon, ChevronRightIcon, ForkIcon, XIcon } from './icons'
 import styles from './MessageView.module.css'
 
-export function isFinishedAssistantTurn(message: MessageWithParts): boolean {
+export function isFinishedAssistantTurn(message: Message) {
   return (
-    message.info.role === 'assistant' &&
-    Boolean(message.info.time.completed || message.info.error)
+    message.type === 'assistant' &&
+    Boolean(message.time.completed || message.error)
   )
 }
-
-/**
- * One agent turn can span several assistant messages (tool calls, retries,
- * subtasks). Only the last message of such a run is a fork point.
- */
-export function endsAssistantTurn(
-  messages: Array<MessageWithParts>,
-  index: number,
-): boolean {
-  const message = messages[index]
-  if (!message || message.info.role !== 'assistant') return false
-  const next = messages[index + 1]
-  return !next || next.info.role !== 'assistant'
+export function endsAssistantTurn(messages: Message[], index: number) {
+  return (
+    messages[index]?.type === 'assistant' &&
+    (!messages[index + 1] ||
+      ['idle', 'user'].includes(messages[index + 1].type))
+  )
 }
-
-/**
- * The fork endpoint copies messages up to but excluding the given message,
- * so forking *after* an assistant turn means forking at the next message.
- * An empty messageID forks the whole session (used for the last turn).
- * Returns null when the fork point can't be expressed safely — an unknown
- * id, or a next message that is still an optimistic placeholder without a
- * server id (forking then would copy messages past the chosen turn).
- */
 export function forkPoint(
-  messages: Array<MessageWithParts>,
-  assistantMessageId: string,
+  messages: Message[],
+  id: string,
 ): { messageID?: string } | null {
-  const index = messages.findIndex(
-    (message) => message.info.id === assistantMessageId,
-  )
-  if (index === -1) return null
-  const next = messages[index + 1]
-  if (!next) return {}
-  if (next.info.id.startsWith('optimistic-')) return null
-  return { messageID: next.info.id }
+  const index = messages.findIndex((m) => m.id === id)
+  if (index < 0) return null
+  return messages[index + 1] ? { messageID: messages[index + 1].id } : {}
 }
-
-type VisiblePart = Exclude<Part, ReasoningPart>
-
 export type PartGroup =
-  | { kind: 'part'; part: VisiblePart }
-  | { kind: 'reasoning'; parts: Array<ReasoningPart> }
-
-function rendersNothing(part: Part): boolean {
-  switch (part.type) {
-    case 'text':
-      return part.ignored || !part.text.trim()
-    case 'reasoning':
-      return !part.text.trim()
-    case 'tool':
-    case 'subtask':
-    case 'patch':
-    case 'retry':
-      return false
-    default:
-      return true
-  }
-}
-
-/**
- * Providers stream one reasoning part per summary step, so a single stretch
- * of thinking often arrives as several adjacent parts. Fold them into one
- * group so they render as a single collapsible block. Parts that render
- * nothing (step boundaries, empty text) are dropped and don't break a run.
- */
-export function groupParts(parts: Array<Part>): Array<PartGroup> {
-  const groups: Array<PartGroup> = []
-  let open: Extract<PartGroup, { kind: 'reasoning' }> | null = null
+  | { kind: 'part'; part: Exclude<Part, ReasoningPart> }
+  | { kind: 'reasoning'; parts: ReasoningPart[] }
+export function groupParts(parts: Part[]): PartGroup[] {
+  const groups: PartGroup[] = []
   for (const part of parts) {
-    if (rendersNothing(part)) continue
-    if (part.type !== 'reasoning') {
-      open = null
-      groups.push({ kind: 'part', part })
-    } else if (open) {
-      open.parts.push(part)
-    } else {
-      open = { kind: 'reasoning', parts: [part] }
-      groups.push(open)
-    }
+    if (part.type !== 'tool' && !part.text.trim()) continue
+    const previous = groups.at(-1)
+    if (part.type === 'reasoning') {
+      if (previous?.kind === 'reasoning') previous.parts.push(part)
+      else groups.push({ kind: 'reasoning', parts: [part] })
+    } else groups.push({ kind: 'part', part })
   }
   return groups
 }
-
-export function reasoningLabel(parts: Array<ReasoningPart>): string {
-  const first = parts[0]
-  const last = parts[parts.length - 1]
-  return last.time.end
-    ? `Thought for ${duration(first.time.start, last.time.end)}`
+export function reasoningLabel(parts: ReasoningPart[]) {
+  const start = parts[0]?.time?.created
+  const end = parts.at(-1)?.time?.completed
+  return start !== undefined && end !== undefined
+    ? `Thought for ${duration(start, end)}`
     : 'Thinking…'
 }
-
+export function taskSessionId(part: ToolPart): string | undefined {
+  if (
+    !['subagent', 'task', 'agent'].includes(part.name) ||
+    !('metadata' in part.state)
+  )
+    return
+  const id = part.state.metadata?.sessionID ?? part.state.metadata?.sessionId
+  return typeof id === 'string' ? id : undefined
+}
+export function taskChildSessionIds(messages: Message[]) {
+  return [
+    ...new Set(
+      messages.flatMap((m) =>
+        m.type === 'assistant'
+          ? m.content.flatMap((p) =>
+              p.type === 'tool' ? (taskSessionId(p) ?? []) : [],
+            )
+          : [],
+      ),
+    ),
+  ]
+}
 export const MessageView = React.memo(function MessageView({
   message,
   directory,
   onFork,
   forkDisabled,
 }: {
-  message: MessageWithParts
+  message: Message
   directory: string
-  onFork?: (messageId: string) => void
+  onFork?: (id: string) => void
   forkDisabled?: boolean
 }) {
-  if (message.info.role === 'user') {
-    const text = message.parts
-      .filter((p) => p.type === 'text' && !p.synthetic)
-      .map((p) => (p.type === 'text' ? p.text : ''))
-      .join('\n')
-    const attachments = message.parts.filter(
-      (part): part is Extract<Part, { type: 'file' }> =>
-        part.type === 'file' && part.url.startsWith('data:'),
-    )
-    if (!text.trim() && attachments.length === 0) return null
+  if (message.type === 'user')
     return (
       <div className={styles.userRow}>
         <div className={styles.userMessage}>
-          {attachments.length > 0 && (
+          {(message.files?.length ?? 0) > 0 && (
             <div className={styles.userAttachments}>
-              {attachments.map((attachment) => (
-                <UserAttachment key={attachment.id} part={attachment} />
-              ))}
+              {message.files?.map((file, i) => {
+                const uri = `data:${file.mime};base64,${file.data}`
+                return (
+                  <a
+                    key={i}
+                    href={uri}
+                    download={file.name}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {file.mime.startsWith('image/') ? (
+                      <img
+                        className={styles.userAttachmentImage}
+                        src={uri}
+                        alt={file.name ?? 'Attached image'}
+                      />
+                    ) : (
+                      <span className={styles.userAttachmentFile}>
+                        {file.name ?? file.mime}
+                      </span>
+                    )}
+                  </a>
+                )
+              })}
             </div>
           )}
-          {text.trim() && <div className={styles.userBubble}>{text}</div>}
+          {message.text && (
+            <div className={styles.userBubble}>{message.text}</div>
+          )}
         </div>
       </div>
     )
-  }
-
-  const error = message.info.error
-  return (
-    <div className={styles.assistant}>
-      {groupParts(message.parts).map((group) =>
-        group.kind === 'reasoning' ? (
-          <ReasoningGroup key={group.parts[0].id} parts={group.parts} />
-        ) : (
-          <PartView key={group.part.id} part={group.part} directory={directory} />
-        ),
-      )}
-      {error && error.name !== 'MessageAbortedError' && (
-        <div className={styles.error}>
-          {'message' in error.data && typeof error.data.message === 'string'
-            ? error.data.message
-            : error.name}
-        </div>
-      )}
-      {error?.name === 'MessageAbortedError' && (
-        <div className={styles.aborted}>Stopped</div>
-      )}
-      {onFork && isFinishedAssistantTurn(message) && (
-        <div className={styles.turnActions}>
-          <button
-            type="button"
-            className={styles.turnActionButton}
-            onClick={() => onFork(message.info.id)}
-            disabled={forkDisabled}
-            aria-label="Fork session from here"
-            title="Fork session from here"
-          >
-            <ForkIcon size={16} />
-          </button>
-        </div>
-      )}
-    </div>
-  )
-})
-
-function UserAttachment({
-  part,
-}: {
-  part: Extract<Part, { type: 'file' }>
-}) {
-  if (part.mime.startsWith('image/')) {
+  if (message.type === 'idle')
+    return message.error ? (
+      <div className={styles.error}>{message.error.message}</div>
+    ) : null
+  if (message.type === 'assistant')
     return (
-      <a href={part.url} target="_blank" rel="noreferrer">
-        <img
-          className={styles.userAttachmentImage}
-          src={part.url}
-          alt={part.filename ?? 'Attached image'}
-        />
-      </a>
+      <div className={styles.assistant}>
+        {groupParts(message.content).map((group, index) =>
+          group.kind === 'reasoning' ? (
+            <details key={index} className={styles.reasoning}>
+              <summary>
+                <ChevronRightIcon size={13} />
+                {reasoningLabel(group.parts)}
+              </summary>
+              <div className={styles.reasoningBody}>
+                {group.parts.map((p, i) => (
+                  <Markdown key={i}>{p.text}</Markdown>
+                ))}
+              </div>
+            </details>
+          ) : group.part.type === 'text' ? (
+            <Markdown key={index}>{group.part.text}</Markdown>
+          ) : (
+            <ToolRow key={index} part={group.part} directory={directory} />
+          ),
+        )}
+        {message.retry && (
+          <div className={styles.aborted}>
+            Retrying (attempt {message.retry.attempt})…{' '}
+            {message.retry.error.message}
+          </div>
+        )}
+        {message.error && (
+          <div className={styles.error}>{message.error.message}</div>
+        )}
+        {onFork && isFinishedAssistantTurn(message) && (
+          <div className={styles.turnActions}>
+            <button
+              type="button"
+              className={styles.turnActionButton}
+              onClick={() => onFork(message.id)}
+              disabled={forkDisabled}
+              aria-label="Fork session from here"
+            >
+              <ForkIcon size={16} />
+            </button>
+          </div>
+        )}
+      </div>
     )
-  }
-  return (
-    <a
-      className={styles.userAttachmentFile}
-      href={part.url}
-      target="_blank"
-      rel="noreferrer"
-    >
-      <span className={styles.userAttachmentType}>
-        {part.mime === 'application/pdf' ? 'PDF' : 'FILE'}
-      </span>
-      <span>{part.filename ?? 'Attachment'}</span>
-    </a>
-  )
-}
-
-function ReasoningGroup({ parts }: { parts: Array<ReasoningPart> }) {
+  if (message.type === 'compaction')
+    return (
+      <details className={styles.reasoning}>
+        <summary>Compaction {message.status}</summary>
+        {message.status === 'failed' ? (
+          message.error.message
+        ) : (
+          <Markdown>{message.summary}</Markdown>
+        )}
+      </details>
+    )
+  if (message.type === 'shell')
+    return (
+      <details className={styles.tool}>
+        <summary>
+          {message.command} · {message.status}
+        </summary>
+        <pre>{JSON.stringify(message.output, null, 2)}</pre>
+      </details>
+    )
+  if (message.type === 'agent-switched')
+    return <div className={styles.aborted}>Agent: {message.agent}</div>
+  if (message.type === 'model-switched')
+    return (
+      <div className={styles.aborted}>
+        Model: {message.model.providerID}/{message.model.id}
+        {message.model.variant ? ` (${message.model.variant})` : ''}
+      </div>
+    )
+  if (message.type === 'location-switched')
+    return (
+      <div className={styles.aborted}>
+        Directory: {message.location.directory}
+      </div>
+    )
   return (
     <details className={styles.reasoning}>
       <summary>
-        <ChevronRightIcon size={13} className={styles.disclosure} />
-        {reasoningLabel(parts)}
+        {message.type === 'skill'
+          ? `Skill: ${message.name}`
+          : (message.description ?? message.type)}
       </summary>
-      <div className={styles.reasoningBody}>
-        {parts.map((part) => (
-          <Markdown key={part.id}>{part.text}</Markdown>
-        ))}
-      </div>
+      <Markdown>{message.text}</Markdown>
     </details>
   )
-}
+})
 
-function PartView({
-  part,
-  directory,
-}: {
-  part: VisiblePart
-  directory: string
-}) {
-  switch (part.type) {
-    case 'text':
-      return <Markdown>{part.text}</Markdown>
-    case 'tool':
-      return part.tool === 'task' ? (
-        <TaskToolRow part={part} directory={directory} />
-      ) : (
-        <ToolRow part={part} />
-      )
-    case 'subtask':
-      return (
-        <div className={styles.toolChip}>
-          <span className={styles.toolName}>subtask</span>
-          <span className={styles.toolTitle}>{part.description}</span>
-        </div>
-      )
-    case 'patch':
-      return (
-        <div className={styles.toolChip}>
-          <span className={styles.toolName}>edited</span>
-          <span className={styles.toolTitle}>
-            {part.files.length === 1
-              ? part.files[0].split('/').pop()
-              : `${part.files.length} files`}
-          </span>
-        </div>
-      )
-    case 'retry':
-      return <div className={styles.aborted}>Retrying (attempt {part.attempt})…</div>
-    default:
-      return null
-  }
-}
-
-function recordValue(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object'
-    ? (value as Record<string, unknown>)
-    : undefined
-}
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value : undefined
-}
-
-export function taskSessionId(part: ToolPart): string | undefined {
-  if (part.tool !== 'task' || !('metadata' in part.state)) return undefined
-  return stringValue(recordValue(part.state.metadata)?.sessionId)
-}
-
-export function taskChildSessionIds(
-  messages: Array<MessageWithParts>,
-): Array<string> {
-  return [
-    ...new Set(
-      messages.flatMap((message) =>
-        message.parts.flatMap((part) => {
-          if (part.type !== 'tool') return []
-          const sessionId = taskSessionId(part)
-          return sessionId ? [sessionId] : []
-        }),
-      ),
-    ),
-  ]
-}
-
-export interface SubagentActivity {
-  toolCalls: number
-  lastTool?: string
-}
-
-export function subagentActivity(
-  messages: Array<MessageWithParts>,
-): SubagentActivity {
-  const tools = messages.flatMap((message) =>
-    message.parts.filter((part): part is ToolPart => part.type === 'tool'),
-  )
-  const last = tools.at(-1)
-  if (!last) return { toolCalls: 0 }
-
-  const title =
-    (last.state.status === 'running' || last.state.status === 'completed'
-      ? stringValue(last.state.title)
-      : undefined) ?? toolInputSummary(last)
-  return {
-    toolCalls: tools.length,
-    lastTool: title ? `${last.tool} ${title}` : last.tool,
-  }
-}
-
-function TaskToolRow({
-  part,
-  directory,
-}: {
-  part: ToolPart
-  directory: string
-}) {
-  const childSessionId = taskSessionId(part)
-  const childMessages = useQuery({
-    ...messagesQuery(childSessionId ?? '', directory),
-    enabled: !!childSessionId && !!directory,
-  })
-  const activity = subagentActivity(childMessages.data ?? [])
-  const input = recordValue(part.state.input)
-  const agent = stringValue(input?.subagent_type) ?? 'subagent'
-  const description = stringValue(input?.description) ?? 'Delegated task'
-  const callCount = `${activity.toolCalls} tool call${activity.toolCalls === 1 ? '' : 's'}`
-  const status = part.state.status
-
-  const content = (
-    <>
-      <span className={styles.taskIcon}>
-        {(status === 'pending' || status === 'running') && (
-          <span className={styles.spinner} />
-        )}
-        {status === 'completed' && <BotIcon size={16} />}
-        {status === 'error' && <XIcon size={15} className={styles.bad} />}
-      </span>
-      <span className={styles.taskText}>
-        <span className={styles.taskHeading}>
-          <span className={styles.taskAgent}>{agent}</span>
-          <span className={styles.taskDescription}>{description}</span>
-        </span>
-        <span className={styles.taskActivity}>
-          {childSessionId && childMessages.isLoading
-            ? 'Loading activity…'
-            : callCount}
-          {activity.lastTool && ` · Last: ${activity.lastTool}`}
-        </span>
-      </span>
-      {childSessionId && (
-        <ChevronRightIcon size={16} className={styles.taskArrow} />
-      )}
-    </>
-  )
-
-  if (!childSessionId) {
-    return <div className={styles.taskCard}>{content}</div>
-  }
-
-  return (
-    <Link
-      className={`${styles.taskCard} ${styles.taskLink}`}
-      to="/session/$sessionId"
-      params={{ sessionId: childSessionId }}
-      aria-label={`Open ${description} subagent session`}
-    >
-      {content}
-    </Link>
-  )
-}
-
-function toolInputSummary(part: ToolPart): string | undefined {
-  const input = part.state.input
-  if (!input) return undefined
-  const candidates = ['command', 'pattern', 'filePath', 'path', 'query', 'url', 'description']
-  for (const key of candidates) {
-    const value = (input as Record<string, unknown>)[key]
-    if (typeof value === 'string' && value.trim()) return value
-  }
-  return undefined
-}
-
-function ToolRow({ part }: { part: ToolPart }) {
+function ToolRow({ part, directory }: { part: ToolPart; directory: string }) {
   const { state } = part
-  const title =
-    (state.status === 'running' || state.status === 'completed'
-      ? state.title
-      : undefined) || toolInputSummary(part)
-
+  const child = taskSessionId(part)
+  const output =
+    'content' in state
+      ? state.content
+          ?.map((item) =>
+            item.type === 'text' ? item.text : JSON.stringify(item),
+          )
+          .join('\n')
+      : undefined
   return (
     <details className={styles.tool}>
       <summary>
         <ChevronRightIcon size={13} className={styles.disclosure} />
-        <span className={styles.toolName}>{part.tool}</span>
-        {title && <span className={styles.toolTitle}>{title}</span>}
+        <span className={styles.toolName}>{part.name}</span>
         <span className={styles.toolStatus}>
-          {(state.status === 'pending' || state.status === 'running') && (
+          {['streaming', 'running'].includes(state.status) && (
             <span className={styles.spinner} />
           )}
           {state.status === 'completed' && (
@@ -428,24 +248,88 @@ function ToolRow({ part }: { part: ToolPart }) {
         </span>
       </summary>
       <div className={styles.toolBody}>
-        {state.status !== 'pending' && Object.keys(state.input).length > 0 && (
-          <pre className={styles.toolIo}>
-            {JSON.stringify(state.input, null, 2)}
-          </pre>
-        )}
-        {state.status === 'completed' && state.output.trim() && (
-          <pre className={styles.toolIo}>{truncate(state.output, 4000)}</pre>
-        )}
+        <pre className={styles.toolIo}>
+          {typeof state.input === 'string'
+            ? state.input
+            : JSON.stringify(state.input, null, 2)}
+        </pre>
+        {nestedToolCalls(part).map((call, index) => (
+          <details
+            key={index}
+            className={styles.tool}
+            open={call.status === 'running'}
+          >
+            <summary>
+              <span className={styles.toolName}>{call.tool}</span> ·{' '}
+              {call.status}
+            </summary>
+            {call.input !== undefined && (
+              <pre className={styles.toolIo}>
+                {JSON.stringify(call.input, null, 2)}
+              </pre>
+            )}
+            {call.result !== undefined && (
+              <pre className={styles.toolIo}>
+                {typeof call.result === 'string'
+                  ? call.result
+                  : JSON.stringify(call.result, null, 2)}
+              </pre>
+            )}
+          </details>
+        ))}
+        {output && <pre className={styles.toolIo}>{output.slice(0, 8000)}</pre>}
         {state.status === 'error' && (
-          <pre className={`${styles.toolIo} ${styles.toolError}`}>
-            {truncate(state.error, 4000)}
-          </pre>
+          <pre className={styles.toolError}>{state.error.message}</pre>
         )}
+        {child && <SubagentActivity sessionId={child} directory={directory} />}
       </div>
     </details>
   )
 }
 
-function truncate(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max)}\n… (truncated)` : text
+function SubagentActivity({
+  sessionId,
+  directory,
+}: {
+  sessionId: string
+  directory: string
+}) {
+  const messages = useQuery(messagesQuery(sessionId, directory))
+  const tools = (messages.data ?? []).flatMap((m) =>
+    m.type === 'assistant' ? m.content.filter((p) => p.type === 'tool') : [],
+  )
+  return (
+    <Link to="/session/$sessionId" params={{ sessionId }}>
+      Open subagent session · {tools.length} tool calls
+      {tools.at(-1) ? ` · Last: ${tools.at(-1)!.name}` : ''}
+    </Link>
+  )
+}
+
+export interface NestedToolCall {
+  tool: string
+  status: 'running' | 'completed' | 'error'
+  input?: unknown
+  result?: unknown
+}
+export function nestedToolCalls(part: ToolPart): NestedToolCall[] {
+  if (part.name !== 'execute' || !('metadata' in part.state)) return []
+  const calls = part.state.metadata?.toolCalls
+  if (!Array.isArray(calls)) return []
+  return calls.flatMap((call) => {
+    if (!call || typeof call !== 'object' || Array.isArray(call)) return []
+    if (
+      typeof call.tool !== 'string' ||
+      !['running', 'completed', 'error'].includes(String(call.status))
+    )
+      return []
+    return [
+      {
+        tool: call.tool,
+        status: call.status as NestedToolCall['status'],
+        ...('input' in call ? { input: call.input } : {}),
+        ...('result' in call ? { result: call.result } : {}),
+      },
+    ]
+  })
 }

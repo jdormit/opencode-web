@@ -111,13 +111,13 @@ function NewSessionPage() {
       ? defaultModel(providers.data)
       : undefined)
 
-  const agents = useQuery(agentsQuery())
+  const agents = useQuery(agentsQuery(directory))
   const [agentOverride, setAgentOverride] = React.useState<string>()
   const agentName =
     agentOverride ??
-    (agents.data?.some((a) => a.name === 'build')
+    (agents.data?.some((a) => a.id === 'build')
       ? 'build'
-      : agents.data?.[0]?.name) ??
+      : agents.data?.[0]?.id) ??
     'build'
   const [error, setError] = React.useState<string>()
   const [sending, setSending] = React.useState(false)
@@ -232,8 +232,7 @@ function NewSessionPage() {
         </h1>
         {projects.isError && (
           <p className={styles.connectError}>
-            Can't reach the OpenCode server. Check your{' '}
-            <a href="/settings">server settings</a>.
+            Can't reach the local OpenCode service. Check the opencode-web server log.
           </p>
         )}
       </div>

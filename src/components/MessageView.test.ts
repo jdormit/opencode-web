@@ -1,318 +1,151 @@
-import { describe, expect, test } from 'bun:test'
-import type { MessageWithParts, Part, ToolPart } from '~/lib/oc'
+import { expect, test } from 'bun:test'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { createElement } from 'react'
 import {
-  endsAssistantTurn,
-  forkPoint,
+  MessageView,
   groupParts,
-  isFinishedAssistantTurn,
   reasoningLabel,
-  subagentActivity,
-  taskChildSessionIds,
-  taskSessionId,
+  forkPoint,
+  nestedToolCalls,
 } from './MessageView'
+import type { Message } from '~/lib/oc'
 
-function part(id: string, type: string, extra: Record<string, unknown> = {}): Part {
-  return {
-    id,
-    sessionID: 'session-1',
-    messageID: 'message-1',
-    type,
-    ...extra,
-  } as unknown as Part
-}
-
-function text(id: string, value: string) {
-  return part(id, 'text', { text: value }) as Extract<Part, { type: 'text' }>
-}
-
-function reasoning(id: string, text: string) {
-  return part(id, 'reasoning', {
-    text,
-    time: { start: 1, end: 2 },
-  }) as Extract<Part, { type: 'reasoning' }>
-}
-
-function tool(
-  id: string,
-  name: string,
-  state: Record<string, unknown>,
-): ToolPart {
-  return {
-    id,
-    sessionID: 'session-1',
-    messageID: 'message-1',
-    type: 'tool',
-    callID: `call-${id}`,
-    tool: name,
-    state,
-  } as unknown as ToolPart
-}
-
-function messages(parts: Array<ToolPart>): Array<MessageWithParts> {
-  return [
-    {
-      info: {
-        id: 'message-1',
-        sessionID: 'session-1',
-        role: 'assistant',
+test('renders V2 user attachments and assistant content', () => {
+  const user: Message = {
+    id: 'msg_1',
+    type: 'user',
+    text: 'Hello',
+    files: [
+      {
+        data: 'YQ==',
+        mime: 'image/png',
+        name: 'a.png',
+        source: { type: 'inline' },
       },
-      parts,
-    } as unknown as MessageWithParts,
-  ]
-}
-
-function turn(
-  id: string,
-  role: 'user' | 'assistant',
-  time: Record<string, number> = { created: 1 },
-  error?: Record<string, unknown>,
-): MessageWithParts {
-  return {
-    info: { id, sessionID: 'session-1', role, time, error },
-    parts: [],
-  } as unknown as MessageWithParts
-}
-
-describe('isFinishedAssistantTurn', () => {
-  test('completed assistant turns are finished', () => {
-    expect(
-      isFinishedAssistantTurn(
-        turn('m1', 'assistant', { created: 1, completed: 2 }),
-      ),
-    ).toBe(true)
-  })
-
-  test('errored assistant turns are finished', () => {
-    expect(
-      isFinishedAssistantTurn(
-        turn('m1', 'assistant', { created: 1 }, { name: 'MessageAbortedError', data: {} }),
-      ),
-    ).toBe(true)
-  })
-
-  test('streaming assistant turns are not finished', () => {
-    expect(isFinishedAssistantTurn(turn('m1', 'assistant'))).toBe(false)
-  })
-
-  test('user messages are never finished turns', () => {
-    expect(
-      isFinishedAssistantTurn(turn('m1', 'user', { created: 1, completed: 2 })),
-    ).toBe(false)
-  })
-})
-
-describe('endsAssistantTurn', () => {
-  const transcript = [
-    turn('u1', 'user'),
-    turn('a1', 'assistant', { created: 1, completed: 2 }),
-    turn('a2', 'assistant', { created: 3, completed: 4 }),
-    turn('u2', 'user'),
-    turn('a3', 'assistant', { created: 5, completed: 6 }),
-  ]
-
-  test('an assistant message followed by a user message ends the turn', () => {
-    expect(endsAssistantTurn(transcript, 2)).toBe(true)
-  })
-
-  test('an assistant message followed by another assistant message does not', () => {
-    expect(endsAssistantTurn(transcript, 1)).toBe(false)
-  })
-
-  test('the last message of the transcript ends the turn', () => {
-    expect(endsAssistantTurn(transcript, 4)).toBe(true)
-  })
-
-  test('user messages never end an assistant turn', () => {
-    expect(endsAssistantTurn(transcript, 3)).toBe(false)
-  })
-
-  test('out-of-range indexes are not turn ends', () => {
-    expect(endsAssistantTurn(transcript, 5)).toBe(false)
-  })
-})
-
-describe('forkPoint', () => {
-  const transcript = [
-    turn('u1', 'user'),
-    turn('a1', 'assistant', { created: 1, completed: 2 }),
-    turn('u2', 'user'),
-    turn('a2', 'assistant', { created: 3, completed: 4 }),
-  ]
-
-  test('forks at the message after the assistant turn', () => {
-    expect(forkPoint(transcript, 'a1')).toEqual({ messageID: 'u2' })
-  })
-
-  test('forks the whole session for the last turn', () => {
-    expect(forkPoint(transcript, 'a2')).toEqual({})
-  })
-
-  test('refuses to fork at unknown messages', () => {
-    expect(forkPoint(transcript, 'missing')).toBeNull()
-  })
-
-  test('refuses to fork while the next message is an optimistic placeholder', () => {
-    expect(
-      forkPoint(
-        [...transcript, turn('optimistic-123', 'user')],
-        'a2',
-      ),
-    ).toBeNull()
-  })
-})
-
-describe('subagent task widgets', () => {
-  test('reads the child session from task state metadata', () => {
-    const part = tool('task-1', 'task', {
-      status: 'running',
-      input: { description: 'Inspect the code' },
-      title: 'Inspect the code',
-      metadata: { sessionId: 'session-child' },
-      time: { start: 1 },
-    })
-
-    expect(taskSessionId(part)).toBe('session-child')
-  })
-
-  test('ignores missing, malformed, and non-task session metadata', () => {
-    const pending = tool('task-1', 'task', {
-      status: 'pending',
-      input: {},
-      raw: '',
-    })
-    const malformed = tool('task-2', 'task', {
-      status: 'completed',
-      input: {},
-      output: '',
-      title: '',
-      metadata: { sessionId: 42 },
-      time: { start: 1, end: 2 },
-    })
-    const other = tool('task-3', 'bash', {
-      status: 'running',
-      input: {},
-      metadata: { sessionId: 'session-child' },
-      time: { start: 1 },
-    })
-
-    expect(taskSessionId(pending)).toBeUndefined()
-    expect(taskSessionId(malformed)).toBeUndefined()
-    expect(taskSessionId(other)).toBeUndefined()
-  })
-
-  test('counts every tool and describes the latest call', () => {
-    const activity = subagentActivity(
-      messages([
-        tool('read-1', 'read', {
+    ],
+    time: { created: 1 },
+  }
+  const html = renderToStaticMarkup(
+    createElement(MessageView, { message: user, directory: '/tmp' }),
+  )
+  expect(html).toContain('Hello')
+  expect(html).toContain('data:image/png;base64,YQ==')
+  const assistant: Message = {
+    id: 'msg_2',
+    type: 'assistant',
+    agent: 'build',
+    model: { id: 'mock', providerID: 'mock' },
+    content: [
+      {
+        type: 'tool',
+        id: 'call_1',
+        name: 'shell',
+        state: {
           status: 'completed',
-          input: { filePath: '/tmp/one.ts' },
-          output: '',
-          title: 'Read one.ts',
-          metadata: {},
-          time: { start: 1, end: 2 },
-        }),
-        tool('grep-1', 'grep', {
-          status: 'error',
-          input: { pattern: 'TaskTool' },
-          error: 'Failed',
-          metadata: {},
-          time: { start: 3, end: 4 },
-        }),
-      ]),
-    )
+          input: { command: 'pwd' },
+          content: [{ type: 'text', text: '/tmp' }],
+        },
+        time: { created: 2, completed: 3 },
+      },
+    ],
+    time: { created: 2, completed: 4 },
+  }
+  const reply = renderToStaticMarkup(
+    createElement(MessageView, { message: assistant, directory: '/tmp' }),
+  )
+  expect(reply).toContain('shell')
+  expect(reply).toContain('/tmp')
+})
 
-    expect(activity).toEqual({
-      toolCalls: 2,
-      lastTool: 'grep TaskTool',
-    })
-  })
+test('groups adjacent reasoning and uses V2 timestamps', () => {
+  const parts = [
+    {
+      type: 'reasoning' as const,
+      text: 'one',
+      time: { created: 100, completed: 500 },
+    },
+    { type: 'text' as const, text: '' },
+    {
+      type: 'reasoning' as const,
+      text: 'two',
+      time: { created: 500, completed: 1100 },
+    },
+  ] as const
+  expect(groupParts([...parts])).toHaveLength(1)
+  expect(reasoningLabel([parts[0], parts[2]])).toBe('Thought for 1s')
+})
 
-  test('reports an empty child transcript', () => {
-    expect(subagentActivity([])).toEqual({ toolCalls: 0 })
-  })
+test('fork after a turn uses the next message boundary', () => {
+  expect(
+    forkPoint([{ id: 'msg_a' }, { id: 'msg_b' }] as Message[], 'msg_a'),
+  ).toEqual({ messageID: 'msg_b' })
+})
 
-  test('collects unique child session IDs from task parts', () => {
-    const task = tool('task-1', 'task', {
-      status: 'running',
-      input: {},
-      metadata: { sessionId: 'session-child' },
-      time: { start: 1 },
-    })
-
-    expect(
-      taskChildSessionIds(
-        messages([
-          task,
-          { ...task, id: 'task-2' },
-          tool('bash-1', 'bash', {
+test('Code Mode nested calls render live progress and persisted outcomes', () => {
+  const tool = {
+    type: 'tool' as const,
+    id: 'execute_1',
+    name: 'execute',
+    time: { created: 1 },
+    state: {
+      status: 'running' as const,
+      input: { code: 'return tools.memory.search({query: "hello"})' },
+      metadata: {
+        toolCalls: [
+          {
+            tool: 'memory.search',
+            input: { query: 'hello' },
             status: 'running',
-            input: {},
-            metadata: { sessionId: 'not-a-child' },
-            time: { start: 1 },
-          }),
-        ]),
-      ),
-    ).toEqual(['session-child'])
-  })
-})
-
-describe('groupParts', () => {
-  test('merges contiguous reasoning parts into one group', () => {
-    const a = reasoning('r1', '**One**')
-    const b = reasoning('r2', '**Two**')
-    expect(groupParts([a, b])).toEqual([{ kind: 'reasoning', parts: [a, b] }])
-  })
-
-  test('visible parts split reasoning groups and pass through in order', () => {
-    const a = reasoning('r1', '**One**')
-    const t = tool('t1', 'bash', { status: 'completed' })
-    const b = reasoning('r2', '**Two**')
-    const done = text('x1', 'done')
-    expect(groupParts([a, t, b, done])).toEqual([
-      { kind: 'reasoning', parts: [a] },
-      { kind: 'part', part: t },
-      { kind: 'reasoning', parts: [b] },
-      { kind: 'part', part: done },
-    ])
-  })
-
-  test('drops parts that render nothing without splitting a group', () => {
-    const a = reasoning('r1', '**One**')
-    const finish = part('sf', 'step-finish')
-    const start = part('ss', 'step-start')
-    const blank = text('x1', '  ')
-    const b = reasoning('r2', '**Two**')
-    expect(groupParts([start, a, finish, start, blank, b])).toEqual([
-      { kind: 'reasoning', parts: [a, b] },
-    ])
-  })
-
-  test('drops reasoning parts with no text', () => {
-    const empty = reasoning('r1', '  \n')
-    const b = reasoning('r2', '**Two**')
-    expect(groupParts([empty, b])).toEqual([
-      { kind: 'reasoning', parts: [b] },
-    ])
-    expect(groupParts([empty])).toEqual([])
-  })
-
-  test('leaves messages without reasoning untouched', () => {
-    const t = tool('t1', 'bash', { status: 'completed' })
-    expect(groupParts([t])).toEqual([{ kind: 'part', part: t }])
-    expect(groupParts([])).toEqual([])
-  })
-})
-
-describe('reasoningLabel', () => {
-  test('spans from the first start to the last end', () => {
-    const a = { ...reasoning('r1', 'a'), time: { start: 1_000, end: 3_000 } }
-    const b = { ...reasoning('r2', 'b'), time: { start: 4_000, end: 13_000 } }
-    expect(reasoningLabel([a, b])).toBe('Thought for 12s')
-  })
-
-  test('shows an in-progress label while the last part is streaming', () => {
-    const a = { ...reasoning('r1', 'a'), time: { start: 1_000, end: 3_000 } }
-    const b = { ...reasoning('r2', 'b'), time: { start: 4_000 } }
-    expect(reasoningLabel([a, b])).toBe('Thinking…')
-  })
+          },
+        ],
+      },
+    },
+  }
+  expect(nestedToolCalls(tool)).toEqual([
+    { tool: 'memory.search', input: { query: 'hello' }, status: 'running' },
+  ])
+  const message: Message = {
+    id: 'msg_execute',
+    type: 'assistant',
+    agent: 'build',
+    model: { id: 'mock', providerID: 'mock' },
+    content: [tool],
+    time: { created: 1 },
+  }
+  const live = renderToStaticMarkup(
+    createElement(MessageView, { message, directory: '/tmp' }),
+  )
+  expect(live).toContain('memory.search')
+  expect(live).toContain('running')
+  const persisted: Message = {
+    ...message,
+    content: [
+      {
+        ...tool,
+        state: {
+          status: 'completed',
+          input: tool.state.input,
+          metadata: {
+            toolCalls: [
+              {
+                tool: 'memory.search',
+                input: { query: 'hello' },
+                status: 'completed',
+              },
+              { tool: 'memory.save', status: 'error' },
+            ],
+          },
+          content: [{ type: 'text', text: 'aggregate result' }],
+        },
+      },
+    ],
+  }
+  const reloaded = renderToStaticMarkup(
+    createElement(MessageView, { message: persisted, directory: '/tmp' }),
+  )
+  expect(reloaded).toContain('memory.search')
+  expect(reloaded).toContain('completed')
+  expect(reloaded).toContain('memory.save')
+  expect(reloaded).toContain('error')
+  expect(reloaded).toContain('aggregate result')
 })

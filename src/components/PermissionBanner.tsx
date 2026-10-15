@@ -11,6 +11,8 @@ export function PermissionBanner({
   directory: string
 }) {
   const queryClient = useQueryClient()
+  const [error, setError] = React.useState<string>()
+  const [sending, setSending] = React.useState(false)
   const permissionQueries = useQueries({
     queries: sessionIds.map((sessionId) =>
       permissionsQuery(sessionId, directory),
@@ -21,10 +23,9 @@ export function PermissionBanner({
   if (!permission) return null
 
   const respond = async (response: 'once' | 'always' | 'reject') => {
-    queryClient.setQueryData<Array<PendingPermission>>(
-      ['permissions', permission.sessionID],
-      (prev) => prev?.filter((p) => p.id !== permission.id),
-    )
+    if (sending) return
+    setSending(true)
+    setError(undefined)
     try {
       await respondPermission(
         permission.sessionID,
@@ -32,8 +33,14 @@ export function PermissionBanner({
         permission.id,
         response,
       )
+      queryClient.setQueryData<Array<PendingPermission>>(
+        ['permissions', permission.sessionID],
+        (prev) => prev?.filter((p) => p.id !== permission.id),
+      )
     } catch (err) {
-      console.error('Failed to respond to permission', err)
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSending(false)
     }
   }
 
@@ -41,25 +48,23 @@ export function PermissionBanner({
     <div className={styles.banner}>
       <div className={styles.text}>
         <span className={styles.label}>Permission requested</span>
-        <span className={styles.title}>
-          {permission.title ?? permission.permission ?? 'Permission request'}
-        </span>
+        <span className={styles.title}>{permission.action}</span>
         {typeof permission.metadata?.command === 'string' && (
-          <code className={styles.command}>
-            {permission.metadata.command}
-          </code>
+          <code className={styles.command}>{permission.metadata.command}</code>
         )}
         {typeof permission.metadata?.command !== 'string' &&
-          permission.patterns?.map((pattern) => (
+          permission.resources.map((pattern) => (
             <code key={pattern} className={styles.command}>
               {pattern}
             </code>
           ))}
       </div>
+      {error && <p role="alert">{error}</p>}
       <div className={styles.actions}>
         <button
           type="button"
           className={styles.deny}
+          disabled={sending}
           onClick={() => void respond('reject')}
         >
           Deny
@@ -67,6 +72,7 @@ export function PermissionBanner({
         <button
           type="button"
           className={styles.allow}
+          disabled={sending}
           onClick={() => void respond('once')}
         >
           Allow once
@@ -74,6 +80,7 @@ export function PermissionBanner({
         <button
           type="button"
           className={styles.allowAlways}
+          disabled={sending || !permission.save?.length}
           onClick={() => void respond('always')}
         >
           Always
@@ -82,3 +89,4 @@ export function PermissionBanner({
     </div>
   )
 }
+import * as React from 'react'

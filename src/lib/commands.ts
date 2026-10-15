@@ -84,22 +84,6 @@ export function sessionBuiltins(
   const items: Array<SlashItem> = [
     { name: 'new', description: 'Start a new session', kind: 'action' },
   ]
-  if (ctx.shareEnabled) {
-    items.push({
-      name: 'share',
-      description: ctx.shared
-        ? 'Copy the share link'
-        : 'Share this session and copy the link',
-      kind: 'action',
-    })
-    if (ctx.shared) {
-      items.push({
-        name: 'unshare',
-        description: 'Stop sharing this session',
-        kind: 'action',
-      })
-    }
-  }
   if (ctx.hasUserMessages) {
     items.push(
       { name: 'fork', description: 'Fork this session', kind: 'action' },

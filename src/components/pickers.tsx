@@ -10,12 +10,7 @@ import type { Agent, Project } from '~/lib/oc'
 import { modelKey, rankModels } from '~/lib/model-usage'
 import type { ModelRef, RankedModel } from '~/lib/model-usage'
 import { Sheet } from './Sheet'
-import {
-  CheckIcon,
-  ChevronRightIcon,
-  FolderIcon,
-  SearchIcon,
-} from './icons'
+import { CheckIcon, ChevronRightIcon, FolderIcon, SearchIcon } from './icons'
 import styles from './pickers.module.css'
 
 /* ---- Project picker ---- */
@@ -141,6 +136,36 @@ export function ModelSheet({
           <li className={styles.empty}>Couldn't load models</li>
         )}
       </ul>
+      {selected &&
+        (() => {
+          const model = ranked.find(
+            (entry) =>
+              entry.ref.providerID === selected.providerID &&
+              entry.ref.modelID === selected.modelID,
+          )?.model
+          return model && model.variants.length > 0 ? (
+            <label>
+              Variant
+              <select
+                aria-label="Model variant"
+                value={selected.variant ?? ''}
+                onChange={(e) =>
+                  onSelect({
+                    ...selected,
+                    variant: e.target.value || undefined,
+                  })
+                }
+              >
+                <option value="">Default</option>
+                {model.variants.map((variant) => (
+                  <option key={variant.id} value={variant.id}>
+                    {variant.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null
+        })()}
       {!showAll && ranked.length > 4 && (
         <button
           type="button"
@@ -200,11 +225,11 @@ export function AgentSheet({
     <Sheet open={open} onOpenChange={onOpenChange} title="Select agent">
       <ul className={styles.list}>
         {agents.map((agent) => (
-          <li key={agent.name}>
+          <li key={agent.id}>
             <button
               type="button"
               className={styles.row}
-              onClick={() => onSelect(agent.name)}
+              onClick={() => onSelect(agent.id)}
             >
               <span className={styles.rowText}>
                 <span className={`${styles.rowTitle} ${styles.capitalize}`}>
@@ -216,7 +241,7 @@ export function AgentSheet({
                   </span>
                 )}
               </span>
-              {selected === agent.name && (
+              {selected === agent.id && (
                 <CheckIcon size={18} className={styles.check} />
               )}
             </button>

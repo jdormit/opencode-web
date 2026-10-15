@@ -1,224 +1,253 @@
 import * as React from 'react'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import {
-  markQuestionEvent,
+  markSessionEvent,
   questionsQuery,
   rejectQuestion,
   replyQuestion,
 } from '~/lib/oc'
-import type { QuestionAnswer, QuestionRequest } from '~/lib/oc'
+import type { FormAnswer, FormField, FormInfo } from '~/lib/oc'
 import { Sheet } from './Sheet'
 import styles from './QuestionSheet.module.css'
 
-function replaceAt<T>(
-  values: Array<T>,
-  index: number,
-  value: T,
-) {
-  const next = [...values]
-  next[index] = value
-  return next
+export function defaultAnswers(fields: FormField[]): FormAnswer {
+  return Object.fromEntries(
+    fields.flatMap((f) =>
+      'default' in f && f.default !== undefined ? [[f.key, f.default]] : [],
+    ),
+  )
 }
-
-export function buildQuestionAnswers(
-  count: number,
-  answers: Array<QuestionAnswer>,
-  custom: Array<string>,
-) {
-  return Array.from({ length: count }, (_, index) => {
-    const ownAnswer = custom[index]?.trim()
-    return ownAnswer
-      ? [...new Set([...(answers[index] ?? []), ownAnswer])]
-      : answers[index] ?? []
-  })
+export function visibleFields(fields: FormField[], answer: FormAnswer) {
+  return fields.filter(
+    (f) =>
+      !('hidden' in f && f.hidden) &&
+      (!('when' in f) ||
+        f.when?.every((w) =>
+          w.op === 'eq' ? answer[w.key] === w.value : answer[w.key] !== w.value,
+        ) !== false),
+  )
 }
-
 export function QuestionSheet({
   sessionIds,
   directory,
 }: {
-  sessionIds: Array<string>
+  sessionIds: string[]
   directory: string
 }) {
-  const queryClient = useQueryClient()
-  const questionQueries = useQueries({
-    queries: sessionIds.map((sessionId) => questionsQuery(sessionId, directory)),
+  const qc = useQueryClient()
+  const queries = useQueries({
+    queries: sessionIds.map((id) => questionsQuery(id, directory)),
   })
-  const requests = questionQueries.flatMap((query) => query.data ?? [])
-  const request = requests[0]
-  const [index, setIndex] = React.useState(0)
-  const [answers, setAnswers] = React.useState<Array<QuestionAnswer>>([])
-  const [custom, setCustom] = React.useState<Array<string>>([])
+  const request = queries.flatMap((q) => q.data ?? [])[0]
+  return request ? (
+    <FormSheet
+      key={request.id}
+      request={request}
+      onDone={() => {
+        markSessionEvent(request.sessionID)
+        qc.setQueryData<FormInfo[]>(
+          ['questions', request.sessionID],
+          (current) => current?.filter((f) => f.id !== request.id),
+        )
+      }}
+    />
+  ) : null
+}
+function FormSheet({
+  request,
+  onDone,
+}: {
+  request: FormInfo
+  onDone: () => void
+}) {
+  const [answer, setAnswer] = React.useState<FormAnswer>(() =>
+    defaultAnswers(request.fields),
+  )
   const [sending, setSending] = React.useState(false)
   const [error, setError] = React.useState<string>()
-
-  React.useEffect(() => {
-    setIndex(0)
-    setAnswers([])
-    setCustom([])
-    setSending(false)
-    setError(undefined)
-  }, [request?.id])
-
-  if (!request) return null
-  const question = request.questions[index]
-  if (!question) return null
-
-  const selected = answers[index] ?? []
-  const multiple = question.multiple === true
-  const last = index === request.questions.length - 1
-
-  const removeRequest = () => {
-    markQuestionEvent(request.sessionID)
-    queryClient.setQueryData<Array<QuestionRequest>>(
-      ['questions', request.sessionID],
-      (current) => current?.filter((item) => item.id !== request.id),
-    )
-  }
-
-  const selectOption = (label: string) => {
-    setError(undefined)
-    setAnswers((current) => {
-      const previous = current[index] ?? []
-      if (!multiple) return replaceAt(current, index, [label])
-      const next = previous.includes(label)
-        ? previous.filter((item) => item !== label)
-        : [...previous, label]
-      return replaceAt(current, index, next)
-    })
-    if (!multiple && custom[index]) {
-      setCustom((current) => replaceAt(current, index, ''))
-    }
-  }
-
-  const updateCustom = (value: string) => {
-    setCustom((current) => replaceAt(current, index, value))
-    if (!multiple && value.trim()) {
-      setAnswers((current) => replaceAt(current, index, []))
-    }
-  }
-
-  const reject = async () => {
+  const fields = visibleFields(request.fields, answer)
+  const update = (key: string, value: FormAnswer[string]) =>
+    setAnswer((current) => ({ ...current, [key]: value }))
+  const settle = async (reject = false) => {
     if (sending) return
     setSending(true)
     setError(undefined)
     try {
-      await rejectQuestion(directory, request.id)
-      removeRequest()
+      if (reject) await rejectQuestion(request.sessionID, request.id)
+      else
+        await replyQuestion(
+          request.sessionID,
+          request.id,
+          Object.fromEntries(
+            fields
+              .filter((f) => f.key in answer)
+              .map((f) => [f.key, answer[f.key]]),
+          ),
+        )
+      onDone()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
       setSending(false)
     }
   }
-
-  const submit = async () => {
-    if (sending) return
-    setSending(true)
-    setError(undefined)
-    try {
-      const ordered = buildQuestionAnswers(
-        request.questions.length,
-        answers,
-        custom,
-      )
-      await replyQuestion(directory, request.id, ordered)
-      removeRequest()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-      setSending(false)
-    }
-  }
-
   return (
     <Sheet
       open
       onOpenChange={(open) => {
-        if (!open) void reject()
+        if (!open) void settle(true)
       }}
-      title={
-        request.questions.length > 1
-          ? `Question ${index + 1} of ${request.questions.length}`
-          : question.header
-      }
+      title={request.title}
     >
-      <div className={styles.content}>
-        {request.questions.length > 1 && (
-          <span className={styles.header}>{question.header}</span>
-        )}
-        <p className={styles.question}>{question.question}</p>
-        <div
-          className={styles.options}
-          role={multiple ? 'group' : 'radiogroup'}
-          aria-label={question.header}
-        >
-          {question.options.map((option) => {
-            const picked = selected.includes(option.label)
-            return (
-              <button
-                key={option.label}
-                type="button"
-                className={styles.option}
-                data-picked={picked}
-                role={multiple ? 'checkbox' : 'radio'}
-                aria-checked={picked}
+      <form
+        className={styles.content}
+        onSubmit={(event) => {
+          event.preventDefault()
+          void settle()
+        }}
+      >
+        {fields.map((field) => (
+          <label className={styles.custom} key={field.key}>
+            <span>{field.title ?? field.key}</span>
+            {field.description && <small>{field.description}</small>}
+            {field.type === 'external' ? (
+              <a href={field.url} target="_blank" rel="noreferrer">
+                Open link
+              </a>
+            ) : field.type === 'boolean' ? (
+              <input
+                type="checkbox"
+                checked={answer[field.key] === true}
                 disabled={sending}
-                onClick={() => selectOption(option.label)}
-              >
-                <span className={styles.mark} data-multiple={multiple}>
-                  {picked && (multiple ? '✓' : '●')}
-                </span>
-                <span className={styles.optionText}>
-                  <strong>{option.label}</strong>
-                  {option.description && <small>{option.description}</small>}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-        {question.custom !== false && (
-          <label className={styles.custom}>
-            <span>Type your own answer</span>
-            <input
-              value={custom[index] ?? ''}
-              disabled={sending}
-              placeholder="Your answer"
-              onChange={(event) => updateCustom(event.target.value)}
-            />
+                onChange={(e) => update(field.key, e.target.checked)}
+              />
+            ) : field.type === 'multiselect' ? (
+              <>
+                <select
+                  multiple
+                  value={
+                    Array.isArray(answer[field.key])
+                      ? (answer[field.key] as string[])
+                      : []
+                  }
+                  required={field.required}
+                  disabled={sending}
+                  onChange={(e) =>
+                    update(
+                      field.key,
+                      Array.from(e.target.selectedOptions, (o) => o.value),
+                    )
+                  }
+                >
+                  {field.options.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                {field.custom && (
+                  <input
+                    placeholder="Other answers (comma separated)"
+                    onChange={(e) =>
+                      update(field.key, [
+                        ...(Array.isArray(answer[field.key])
+                          ? (answer[field.key] as string[])
+                          : []
+                        ).filter((v) =>
+                          field.options.some((o) => o.value === v),
+                        ),
+                        ...e.target.value
+                          .split(',')
+                          .map((v) => v.trim())
+                          .filter(Boolean),
+                      ])
+                    }
+                  />
+                )}
+              </>
+            ) : field.type === 'string' ? (
+              <>
+                {field.options && !field.custom ? (
+                  <select
+                    value={String(answer[field.key] ?? '')}
+                    required={field.required}
+                    disabled={sending}
+                    onChange={(e) => update(field.key, e.target.value)}
+                  >
+                    <option value="">Choose…</option>
+                    {field.options.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    value={String(answer[field.key] ?? '')}
+                    list={
+                      field.options
+                        ? `form-${request.id}-${field.key}`
+                        : undefined
+                    }
+                    required={field.required}
+                    disabled={sending}
+                    placeholder={field.placeholder}
+                    minLength={field.minLength}
+                    maxLength={field.maxLength}
+                    pattern={field.pattern}
+                    onChange={(e) => update(field.key, e.target.value)}
+                  />
+                )}
+                {field.options && field.custom && (
+                  <datalist id={`form-${request.id}-${field.key}`}>
+                    {field.options.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </datalist>
+                )}
+              </>
+            ) : (
+              <input
+                type="number"
+                value={String(answer[field.key] ?? '')}
+                required={field.required}
+                disabled={sending}
+                step={field.type === 'integer' ? 1 : 'any'}
+                min={
+                  typeof field.minimum === 'number' ? field.minimum : undefined
+                }
+                max={
+                  typeof field.maximum === 'number' ? field.maximum : undefined
+                }
+                onChange={(e) => {
+                  if (e.target.value === '')
+                    setAnswer((current) => {
+                      const next = { ...current }
+                      delete next[field.key]
+                      return next
+                    })
+                  else update(field.key, Number(e.target.value))
+                }}
+              />
+            )}
           </label>
-        )}
+        ))}
         {error && <p className={styles.error}>{error}</p>}
         <div className={styles.actions}>
           <button
             type="button"
             className={styles.reject}
             disabled={sending}
-            onClick={() => void reject()}
+            onClick={() => void settle(true)}
           >
             Dismiss
           </button>
-          {index > 0 && (
-            <button
-              type="button"
-              className={styles.secondary}
-              disabled={sending}
-              onClick={() => setIndex((current) => current - 1)}
-            >
-              Back
-            </button>
-          )}
-          <button
-            type="button"
-            className={styles.primary}
-            disabled={sending}
-            onClick={() => {
-              if (last) void submit()
-              else setIndex((current) => current + 1)
-            }}
-          >
-            {sending ? 'Sending…' : last ? 'Submit' : 'Next'}
+          <button type="submit" className={styles.primary} disabled={sending}>
+            {sending ? 'Sending…' : 'Submit'}
           </button>
         </div>
-      </div>
+      </form>
     </Sheet>
   )
 }

@@ -1,128 +1,45 @@
-import { describe, expect, test } from 'bun:test'
-import {
-  commandRequest,
-  forkSessionRequest,
-  promptParts,
-  sessionListRequest,
-} from './oc'
+import { expect, test } from 'bun:test'
+import { OpenCode } from '@opencode/client'
+import { listSessions, promptFiles } from './oc'
 
-describe('sessionListRequest', () => {
-  test('lists sessions globally by directory', () => {
-    expect(sessionListRequest('/Users/test/project', 100)).toEqual({
-      path: '/experimental/session',
-      query: {
-        directory: '/Users/test/project',
-        roots: 'true',
-        limit: 100,
-      },
-    })
+test('session history follows V2 cursors and requests roots', async () => {
+  const requests: URL[] = []
+  const api = OpenCode.make({
+    baseUrl: 'http://example.test',
+    fetch: (async (url) => {
+      if (new URL(String(url)).pathname === '/api/location')
+        return Response.json({ project: { id: 'project' } })
+      requests.push(new URL(String(url)))
+      return Response.json(
+        requests.length === 1
+          ? {
+              data: [{ id: 'ses_1', location: { directory: '/tmp/project' } }],
+              cursor: { next: 'next-page' },
+            }
+          : {
+              data: [{ id: 'ses_2', location: { directory: '/tmp/project' } }],
+              cursor: {},
+            },
+      )
+    }) as typeof fetch,
   })
+  const sessions = await listSessions(api, '/tmp/project', true)
+  expect(sessions.map((s) => s.id)).toEqual(['ses_1', 'ses_2'])
+  expect(requests[0].pathname).toBe('/api/session')
+  expect(requests[0].searchParams.get('parentID')).toBe('null')
+  expect(requests[1].searchParams.get('cursor')).toBe('next-page')
+  expect(requests[1].searchParams.has('order')).toBe(false)
 })
 
-describe('forkSessionRequest', () => {
-  test('forks before a specific message', () => {
-    expect(
-      forkSessionRequest('session-1', '/Users/test/project', 'message-2'),
-    ).toEqual({
-      path: '/session/session-1/fork',
-      query: { directory: '/Users/test/project' },
-      body: { messageID: 'message-2' },
-    })
-  })
-
-  test('forks the whole session when no message is given', () => {
-    expect(forkSessionRequest('session-1', '/Users/test/project')).toEqual({
-      path: '/session/session-1/fork',
-      query: { directory: '/Users/test/project' },
-      body: {},
-    })
-  })
-})
-
-describe('commandRequest', () => {
-  test('sends the raw argument string for the server to expand', () => {
-    expect(
-      commandRequest('session-1', '/Users/test/project', {
-        command: 'review',
-        args: 'the last commit',
-        agent: 'build',
-        model: 'anthropic/claude-sonnet-4-5',
-      }),
-    ).toEqual({
-      path: '/session/session-1/command',
-      query: { directory: '/Users/test/project' },
-      body: {
-        command: 'review',
-        arguments: 'the last commit',
-        agent: 'build',
-        model: 'anthropic/claude-sonnet-4-5',
-      },
-    })
-  })
-
-  test('attaches files as parts', () => {
-    expect(
-      commandRequest('session-1', '/Users/test/project', {
-        command: 'review',
-        args: '',
-        attachments: [
-          {
-            id: 'local-1',
-            filename: 'screen.png',
-            mime: 'image/png',
-            url: 'data:image/png;base64,AAAA',
-          },
-        ],
-      }).body.parts,
-    ).toEqual([
+test('attachments use V2 file URI inputs', () => {
+  expect(
+    promptFiles([
       {
-        type: 'file',
-        filename: 'screen.png',
+        id: 'file',
         mime: 'image/png',
-        url: 'data:image/png;base64,AAAA',
+        filename: 'image.png',
+        url: 'data:image/png;base64,YQ==',
       },
-    ])
-  })
-})
-
-describe('promptParts', () => {
-  test('serializes text and file attachments', () => {
-    expect(
-      promptParts({
-        text: 'Review this',
-        attachments: [
-          {
-            id: 'local-1',
-            filename: 'screen.png',
-            mime: 'image/png',
-            url: 'data:image/png;base64,AAAA',
-          },
-        ],
-      }),
-    ).toEqual([
-      { type: 'text', text: 'Review this' },
-      {
-        type: 'file',
-        filename: 'screen.png',
-        mime: 'image/png',
-        url: 'data:image/png;base64,AAAA',
-      },
-    ])
-  })
-
-  test('allows an attachment-only prompt', () => {
-    expect(
-      promptParts({
-        text: '',
-        attachments: [
-          {
-            id: 'local-1',
-            filename: 'notes.txt',
-            mime: 'text/plain',
-            url: 'data:text/plain;base64,SGVsbG8=',
-          },
-        ],
-      }),
-    ).toHaveLength(1)
-  })
+    ]),
+  ).toEqual([{ uri: 'data:image/png;base64,YQ==', name: 'image.png' }])
 })

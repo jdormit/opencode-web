@@ -5,6 +5,7 @@ const STORAGE_KEY = 'oc-model-usage'
 export interface ModelRef {
   providerID: string
   modelID: string
+  variant?: string
 }
 
 interface UsageEntry {

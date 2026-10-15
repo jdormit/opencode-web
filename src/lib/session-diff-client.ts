@@ -107,18 +107,10 @@ export function useSessionDiff(
       setLoading(true)
       setError(undefined)
       try {
-        const search = new URLSearchParams({ directory })
-        const ids = messageKey ? messageKey.split(',') : []
-        const base = `/api/proxy/session/${encodeURIComponent(sessionId)}/diff`
+        const base = `/api/proxy/api/session/${encodeURIComponent(sessionId)}/diff`
         const response = await send({
           type: 'load',
-          urls: ids.length > 0
-            ? ids.map((messageID) => {
-                const query = new URLSearchParams(search)
-                query.set('messageID', messageID)
-                return `${base}?${query}`
-              })
-            : [`${base}?${search}`],
+          urls: [base],
         })
         if (cancelled) return
         const nextFiles = response.files ?? []

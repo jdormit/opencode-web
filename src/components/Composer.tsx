@@ -102,7 +102,7 @@ export function Composer({
   const skillPickedRef = React.useRef(false)
 
   const providers = useQuery(providersQuery(directory))
-  const agents = useQuery(agentsQuery())
+  const agents = useQuery(agentsQuery(directory))
 
   const selectedModel = findModel(providers.data, modelRef)
   const directoryLabel = directory

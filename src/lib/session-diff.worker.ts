@@ -41,7 +41,7 @@ scope.onmessage = async (message: MessageEvent) => {
           const index = next++
           const response = await fetch(request.urls[index])
           if (!response.ok) throw new Error(`Diff request failed (${response.status})`)
-          groups[index] = (await response.json()) as Array<RawSessionDiff>
+          groups[index] = ((await response.json()) as { data: Array<RawSessionDiff> }).data
         }
       }
       await Promise.all(

@@ -1,384 +1,215 @@
-import { describe, expect, test } from 'bun:test'
-import { QueryClient } from '@tanstack/react-query'
-import { applyEvent } from './events'
-import { permissionsForSession, questionsForSession } from './oc'
-import type {
-  Event,
-  MessageWithParts,
-  PendingPermission,
-  QuestionRequest,
-  Session,
-  ToolPart,
-} from './oc'
+import { expect, test } from 'bun:test'
+import type { OpenCodeEvent, SessionMessageInfo } from '@opencode/client'
+import { projectMessageEvent, type TranscriptEvent } from './events'
 
-const childSession = {
-  id: 'session-child',
-  projectID: 'project-1',
-  directory: '/workspace',
-  parentID: 'session-parent',
-  title: 'Child session',
-  version: '1',
-  time: { created: 1, updated: 2 },
-} as Session
-
-const rootSession = {
-  id: 'session-root',
-  projectID: 'project-nested',
-  directory: '/workspace/nested',
-  title: 'Nested project session',
-  version: '1',
-  time: { created: 1, updated: 2 },
-} as Session
-
-describe('root session events', () => {
-  test('updates only the most specific matching project cache', () => {
-    const queryClient = new QueryClient()
-    queryClient.setQueryData<Array<Session>>(['sessions', '/workspace'], [])
-    queryClient.setQueryData<Array<Session>>(
-      ['sessions', '/workspace/nested'],
-      [],
-    )
-    queryClient.setQueryData<Array<Session>>(
-      ['sessions-all', '/workspace'],
-      [],
-    )
-    queryClient.setQueryData<Array<Session>>(
-      ['sessions-all', '/workspace/nested'],
-      [],
-    )
-
-    applyEvent(queryClient, rootSession.directory, {
-      type: 'session.updated',
-      properties: { info: rootSession },
-    } as Event)
-
-    expect(
-      queryClient.getQueryData<Array<Session>>(['sessions', '/workspace']),
-    ).toEqual([])
-    expect(
-      queryClient.getQueryData<Array<Session>>([
-        'sessions',
-        '/workspace/nested',
-      ]),
-    ).toEqual([rootSession])
-    expect(
-      queryClient.getQueryData<Array<Session>>(['sessions-all', '/workspace']),
-    ).toEqual([])
-    expect(
-      queryClient.getQueryData<Array<Session>>([
-        'sessions-all',
-        '/workspace/nested',
-      ]),
-    ).toEqual([rootSession])
+test('live text and tool events produce the reloaded V2 transcript', () => {
+  let messages: SessionMessageInfo[] = []
+  const emit = (type: string, data: object, created = 1) => {
+    messages = projectMessageEvent(messages, {
+      id: `evt_${created}`,
+      type,
+      created,
+      data: { sessionID: 'ses_1', assistantMessageID: 'msg_2', ...data },
+    } as OpenCodeEvent)
+  }
+  emit('session.inbox.enqueued', {
+    inboxID: 'msg_1',
+    item: { type: 'user', delivery: 'steer', payload: { text: 'hello' } },
   })
-
-  test('deletes stale entries from every matching project cache', () => {
-    const queryClient = new QueryClient()
-    queryClient.setQueryData<Array<Session>>(
-      ['sessions', '/workspace'],
-      [rootSession],
-    )
-    queryClient.setQueryData<Array<Session>>(
-      ['sessions', '/workspace/nested'],
-      [rootSession],
-    )
-
-    applyEvent(queryClient, rootSession.directory, {
-      type: 'session.deleted',
-      properties: { info: rootSession },
-    } as Event)
-
-    expect(
-      queryClient.getQueryData<Array<Session>>(['sessions', '/workspace']),
-    ).toEqual([])
-    expect(
-      queryClient.getQueryData<Array<Session>>([
-        'sessions',
-        '/workspace/nested',
-      ]),
-    ).toEqual([])
-  })
-})
-
-describe('subagent session events', () => {
-  test('caches child sessions without adding them to root session lists', () => {
-    const queryClient = new QueryClient()
-    queryClient.setQueryData<Array<Session>>(['sessions', '/workspace'], [])
-    queryClient.setQueryData<Array<string>>(
-      ['session-descendants', 'session-parent'],
-      [],
-    )
-
-    applyEvent(queryClient, '/workspace', {
-      type: 'session.created',
-      properties: { info: childSession },
-    } as Event)
-
-    expect(
-      queryClient.getQueryData<Session>(['session', childSession.id]),
-    ).toEqual(childSession)
-    expect(
-      queryClient.getQueryData<Array<Session>>(['sessions', '/workspace']),
-    ).toEqual([])
-    expect(
-      queryClient.getQueryState([
-        'session-descendants',
-        'session-parent',
-      ])?.isInvalidated,
-    ).toBe(true)
-  })
-
-  test('updates task parts when child metadata arrives', () => {
-    const queryClient = new QueryClient()
-    const message = {
-      info: {
-        id: 'message-1',
-        sessionID: 'session-parent',
-        role: 'assistant',
-      },
-      parts: [],
-    } as unknown as MessageWithParts
-    queryClient.setQueryData<Array<MessageWithParts>>(
-      ['messages', 'session-parent'],
-      [message],
-    )
-    const part = {
-      id: 'part-1',
-      sessionID: 'session-parent',
-      messageID: 'message-1',
-      type: 'tool',
-      callID: 'call-1',
-      tool: 'task',
-      state: {
-        status: 'running',
-        input: { description: 'Inspect the code' },
-        title: 'Inspect the code',
-        metadata: { sessionId: childSession.id },
-        time: { start: 1 },
-      },
-    } as unknown as ToolPart
-
-    applyEvent(queryClient, '/workspace', {
-      type: 'message.part.updated',
-      properties: { part },
-    } as unknown as Event)
-
-    expect(
-      queryClient.getQueryData<Array<MessageWithParts>>([
-        'messages',
-        'session-parent',
-      ])?.[0].parts,
-    ).toEqual([part])
-  })
-})
-
-describe('session diff events', () => {
-  test('updates lightweight availability and revision state', () => {
-    const queryClient = new QueryClient()
-    queryClient.setQueryData(['session-diff-revision', rootSession.id], 3)
-
-    applyEvent(queryClient, rootSession.directory, {
-      type: 'session.diff',
-      properties: {
-        sessionID: rootSession.id,
-        diff: [
-          {
-            file: 'src/index.ts',
-            before: 'old',
-            after: 'new',
-            additions: 1,
-            deletions: 1,
-          },
-        ],
-      },
-    } as Event)
-
-    expect(
-      queryClient.getQueryData<boolean>(['session-diff-available', rootSession.id]),
-    ).toBe(true)
-    expect(
-      queryClient.getQueryData<number>(['session-diff-revision', rootSession.id]),
-    ).toBe(4)
-
-    applyEvent(queryClient, rootSession.directory, {
-      type: 'session.diff',
-      properties: { sessionID: rootSession.id, diff: [] },
-    } as Event)
-    expect(
-      queryClient.getQueryData<boolean>(['session-diff-available', rootSession.id]),
-    ).toBe(true)
-  })
-})
-
-const permission: PendingPermission = {
-  id: 'permission-1',
-  sessionID: 'session-1',
-  permission: 'bash',
-  patterns: ['git status'],
-  metadata: {},
-}
-
-describe('pending permissions', () => {
-  test('filters the server permission list to the open session', () => {
-    expect(
-      permissionsForSession(
-        [permission, { ...permission, id: 'permission-2', sessionID: 'session-2' }],
-        'session-1',
-      ),
-    ).toEqual([permission])
-  })
-
-  test('adds current permission events to the session cache', () => {
-    const queryClient = new QueryClient()
-
-    applyEvent(queryClient, undefined, {
-      type: 'permission.asked',
-      properties: permission,
-    } as unknown as Event)
-
-    expect(
-      queryClient.getQueryData<Array<PendingPermission>>([
-        'permissions',
-        permission.sessionID,
-      ]),
-    ).toEqual([permission])
-  })
-
-  test('removes permissions using the current requestID field', () => {
-    const queryClient = new QueryClient()
-    queryClient.setQueryData(['permissions', permission.sessionID], [permission])
-
-    applyEvent(queryClient, undefined, {
-      type: 'permission.replied',
-      properties: {
-        sessionID: permission.sessionID,
-        requestID: permission.id,
-        reply: 'once',
-      },
-    } as unknown as Event)
-
-    expect(
-      queryClient.getQueryData<Array<PendingPermission>>([
-        'permissions',
-        permission.sessionID,
-      ]),
-    ).toEqual([])
-  })
-
-  test('supports legacy permission event fields', () => {
-    const queryClient = new QueryClient()
-    const legacy = {
-      ...permission,
-      title: 'Run a command',
-    }
-
-    applyEvent(queryClient, undefined, {
-      type: 'permission.updated',
-      properties: legacy,
-    } as unknown as Event)
-    applyEvent(queryClient, undefined, {
-      type: 'permission.replied',
-      properties: {
-        sessionID: permission.sessionID,
-        permissionID: permission.id,
-        response: 'once',
-      },
-    } as unknown as Event)
-
-    expect(
-      queryClient.getQueryData<Array<PendingPermission>>([
-        'permissions',
-        permission.sessionID,
-      ]),
-    ).toEqual([])
-  })
-})
-
-const question: QuestionRequest = {
-  id: 'question-1',
-  sessionID: 'session-1',
-  questions: [
+  emit(
+    'session.step.started',
+    { started: 2, agent: 'build', model: { providerID: 'mock', id: 'mock' } },
+    2,
+  )
+  emit('session.text.started', {}, 3)
+  emit('session.text.delta', { delta: 'hel' }, 4)
+  emit('session.text.ended', { text: 'hello' }, 5)
+  emit('session.tool.input.started', { id: 'tool_1', name: 'shell' }, 6)
+  emit('session.tool.called', { id: 'tool_1', input: { command: 'pwd' } }, 7)
+  emit(
+    'session.tool.success',
+    { id: 'tool_1', executed: true, content: [{ type: 'text', text: '/tmp' }] },
+    8,
+  )
+  emit(
+    'session.step.ended',
     {
-      header: 'Approach',
-      question: 'Which approach should I use?',
-      options: [{ label: 'Simple', description: 'Make the smallest change' }],
+      finish: 'stop',
+      cost: 0,
+      tokens: {
+        input: 10,
+        output: 5,
+        reasoning: 0,
+        cache: { read: 0, write: 0 },
+      },
     },
-  ],
-}
-
-describe('pending questions', () => {
-  test('filters the server question list to the open session', () => {
-    expect(
-      questionsForSession(
-        [
-          question,
-          { ...question, id: 'question-2', sessionID: 'session-2' },
-        ],
-        'session-1',
-      ),
-    ).toEqual([question])
+    9,
+  )
+  expect(messages[0]).toEqual({
+    id: 'msg_1',
+    type: 'user',
+    text: 'hello',
+    time: { created: 1 },
   })
-
-  test('adds and updates question events in request order', () => {
-    const queryClient = new QueryClient()
-    const later = { ...question, id: 'question-2' }
-
-    applyEvent(queryClient, undefined, {
-      type: 'question.asked',
-      properties: later,
-    } as unknown as Event)
-    applyEvent(queryClient, undefined, {
-      type: 'question.asked',
-      properties: question,
-    } as unknown as Event)
-    applyEvent(queryClient, undefined, {
-      type: 'question.asked',
-      properties: {
-        ...question,
-        questions: [{ ...question.questions[0], header: 'Updated' }],
+  expect(messages[1]).toMatchObject({
+    id: 'msg_2',
+    type: 'assistant',
+    time: { created: 2, completed: 9 },
+    content: [
+      { type: 'text', text: 'hello' },
+      {
+        type: 'tool',
+        id: 'tool_1',
+        name: 'shell',
+        state: {
+          status: 'completed',
+          input: { command: 'pwd' },
+          content: [{ type: 'text', text: '/tmp' }],
+        },
       },
-    } as unknown as Event)
-
-    const requests = queryClient.getQueryData<Array<QuestionRequest>>([
-      'questions',
-      question.sessionID,
-    ])
-    expect(requests?.map((item) => item.id)).toEqual([
-      question.id,
-      later.id,
-    ])
-    expect(requests?.[0].questions[0].header).toBe('Updated')
+    ],
   })
+})
 
-  test('removes replied and rejected questions', () => {
-    const queryClient = new QueryClient()
-    const second = { ...question, id: 'question-2' }
-    queryClient.setQueryData(
-      ['questions', question.sessionID],
-      [question, second],
-    )
-
-    applyEvent(queryClient, undefined, {
-      type: 'question.replied',
-      properties: {
-        sessionID: question.sessionID,
-        requestID: question.id,
-        answers: [['Simple']],
+test('Code Mode metadata survives progress and success projection', () => {
+  let messages: SessionMessageInfo[] = [
+    {
+      id: 'msg_2',
+      type: 'assistant',
+      agent: 'build',
+      model: { id: 'mock', providerID: 'mock' },
+      content: [
+        {
+          type: 'tool',
+          id: 'exec',
+          name: 'execute',
+          state: {
+            status: 'running',
+            input: { code: 'return tools.search({})' },
+            metadata: {},
+          },
+          time: { created: 1 },
+        },
+      ],
+      time: { created: 1 },
+    },
+  ]
+  const toolCalls = [
+    { tool: 'search', input: { query: 'test' }, status: 'running' },
+  ]
+  messages = projectMessageEvent(messages, {
+    id: 'evt_progress',
+    created: 2,
+    type: 'session.tool.progress',
+    data: {
+      sessionID: 'ses_1',
+      assistantMessageID: 'msg_2',
+      id: 'exec',
+      metadata: { toolCalls },
+    },
+  } as OpenCodeEvent)
+  expect(messages[0]).toMatchObject({
+    content: [{ state: { metadata: { toolCalls } } }],
+  })
+  toolCalls[0].status = 'completed'
+  messages = projectMessageEvent(messages, {
+    id: 'evt_success',
+    durable: { aggregateID: 'ses_1', seq: 3, version: 2 },
+    created: 3,
+    type: 'session.tool.success',
+    data: {
+      sessionID: 'ses_1',
+      assistantMessageID: 'msg_2',
+      id: 'exec',
+      metadata: { toolCalls },
+      content: [{ type: 'text', text: 'found' }],
+      executed: true,
+    },
+  } as OpenCodeEvent)
+  expect(messages[0]).toMatchObject({
+    content: [
+      {
+        state: {
+          status: 'completed',
+          metadata: { toolCalls },
+          content: [{ type: 'text', text: 'found' }],
+        },
       },
-    } as unknown as Event)
-    applyEvent(queryClient, undefined, {
-      type: 'question.rejected',
-      properties: {
-        sessionID: second.sessionID,
-        requestID: second.id,
-      },
-    } as unknown as Event)
+    ],
+  })
+})
 
-    expect(
-      queryClient.getQueryData<Array<QuestionRequest>>([
-        'questions',
-        question.sessionID,
-      ]),
-    ).toEqual([])
+test('replacement content and moves match reloaded transcript entries', () => {
+  const original: SessionMessageInfo[] = [
+    {
+      id: 'msg_1',
+      type: 'assistant',
+      agent: 'build',
+      model: { id: 'mock', providerID: 'mock' },
+      content: [{ type: 'text', text: 'before' }],
+      time: { created: 1 },
+    },
+  ]
+  const replaced = projectMessageEvent(original, {
+    id: 'evt_2',
+    created: 2,
+    type: 'session.message.content.updated',
+    data: {
+      sessionID: 'ses_1',
+      messageID: 'msg_1',
+      content: [{ type: 'text', text: 'after' }],
+    },
+  } as TranscriptEvent)
+  expect(replaced[0]).toMatchObject({ content: [{ text: 'after' }] })
+  const moved = projectMessageEvent(replaced, {
+    id: 'evt_3',
+    created: 3,
+    type: 'session.moved',
+    data: {
+      sessionID: 'ses_1',
+      projectID: 'project',
+      location: { directory: '/tmp/new' },
+    },
+  } as TranscriptEvent)
+  expect(moved[1]).toEqual({
+    id: 'msg_3',
+    type: 'location-switched',
+    projectID: 'project',
+    location: { directory: '/tmp/new' },
+    time: { created: 3 },
+  })
+})
+
+test('a new assistant step clears retry status on the previous step', () => {
+  const original: SessionMessageInfo[] = [
+    {
+      id: 'msg_1',
+      type: 'assistant',
+      agent: 'build',
+      model: { id: 'mock', providerID: 'mock' },
+      content: [],
+      retry: {
+        attempt: 1,
+        at: 2,
+        error: { type: 'unknown', message: 'retry' },
+      },
+      time: { created: 1 },
+    },
+  ]
+  const messages = projectMessageEvent(original, {
+    id: 'evt_3',
+    created: 3,
+    type: 'session.step.started',
+    data: {
+      sessionID: 'ses_1',
+      assistantMessageID: 'msg_2',
+      started: 3,
+      agent: 'build',
+      model: { id: 'mock', providerID: 'mock' },
+    },
+  } as TranscriptEvent)
+  expect(messages[0]).toMatchObject({
+    retry: undefined,
+    time: { completed: 3 },
   })
 })

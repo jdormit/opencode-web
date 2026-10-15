@@ -68,7 +68,6 @@ export const Route = createRootRouteWithContext<{
       void queryClient.prefetchQuery(agentsQuery())
       void queryClient.prefetchQuery(providersQuery())
     } catch {
-      // Server unreachable: render anyway; the UI points at settings.
     }
   },
   errorComponent: (props) => (

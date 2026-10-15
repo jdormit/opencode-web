@@ -134,7 +134,6 @@ describe('sessionBuiltins', () => {
     const names = sessionBuiltins(base).map((i) => i.name)
     expect(names).toEqual([
       'new',
-      'share',
       'fork',
       'compact',
       'undo',
@@ -142,9 +141,10 @@ describe('sessionBuiltins', () => {
     ])
   })
 
-  test('offers unshare only when shared', () => {
+  test('does not offer unsupported V2 sharing', () => {
     const names = sessionBuiltins({ ...base, shared: true }).map((i) => i.name)
-    expect(names).toContain('unshare')
+    expect(names).not.toContain('share')
+    expect(names).not.toContain('unshare')
   })
 
   test('hides share commands when sharing is disabled', () => {

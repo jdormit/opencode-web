@@ -27,7 +27,7 @@ export function OpenProjectSheet({
 }) {
   const queryClient = useQueryClient()
   const serverPath = useQuery({ ...serverPathQuery(), enabled: open })
-  const home = serverPath.data?.home ?? serverPath.data?.directory ?? '/'
+  const home = serverPath.data?.directory ?? '/'
   const [directory, setDirectory] = React.useState('')
   const [draft, setDraft] = React.useState('')
   const [pathError, setPathError] = React.useState<string>()

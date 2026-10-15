@@ -65,7 +65,7 @@ export function SessionListPanel({ onNavigate }: { onNavigate?: () => void }) {
         return [group]
       }
       const sessions = group.sessions.filter((s) =>
-        s.title.toLowerCase().includes(query),
+        (s.title ?? '').toLowerCase().includes(query),
       )
       return sessions.length > 0 ? [{ ...group, sessions }] : []
     })

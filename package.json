@@ -12,7 +12,7 @@
     "start": "bunx srvx --prod -s dist/client dist/server/server.js"
   },
   "dependencies": {
-    "@opencode-ai/sdk": "^1.18.18",
+    "@opencode/client": "2.0.29",
     "@tanstack/react-query": "^5.90.0",
     "@tanstack/react-query-devtools": "^5.90.0",
     "@tanstack/react-router": "^1.170.29",

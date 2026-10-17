@@ -5,8 +5,10 @@ import {
   Outlet,
   Scripts,
   createRootRouteWithContext,
+  useLocation,
+  useNavigate,
 } from '@tanstack/react-router'
-import type { QueryClient } from '@tanstack/react-query'
+import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { AppShell } from '~/components/shell'
 import { DefaultCatchBoundary } from '~/components/DefaultCatchBoundary'
 import { NotFound } from '~/components/NotFound'
@@ -16,9 +18,11 @@ import {
   projectsQuery,
   providersQuery,
   sessionStatusQuery,
+  sessionQuery,
   sessionsQuery,
 } from '~/lib/oc'
 import appCss from '~/styles/app.css?url'
+import { startupSession } from '~/lib/startup'
 
 const themeInitScript = `
 try {
@@ -81,6 +85,34 @@ export const Route = createRootRouteWithContext<{
 
 function RootComponent() {
   useGlobalEvents()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const initialLocation = React.useRef(location)
+  React.useEffect(() => {
+    // Only restore on launch, never on an in-app visit to the new-session page.
+    if (location !== initialLocation.current) return
+    const sessionId = startupSession(location.pathname, location.searchStr)
+    if (!sessionId) return
+    let cancelled = false
+    void queryClient
+      .fetchQuery({ ...sessionQuery(sessionId), retry: false })
+      .then(() => {
+        if (!cancelled) {
+          void navigate({
+            to: '/session/$sessionId',
+            params: { sessionId },
+            replace: true,
+          })
+        }
+      })
+      .catch(() => {
+        // Missing sessions and connection failures leave the new-session page open.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [location, navigate, queryClient])
   return (
     <RootDocument>
       <AppShell>

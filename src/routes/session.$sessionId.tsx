@@ -33,6 +33,7 @@ import {
 } from '~/lib/commands'
 import type { ModelRef } from '~/lib/model-usage'
 import { recordModelUse } from '~/lib/model-usage'
+import { rememberSession } from '~/lib/startup'
 import { Composer, type ComposerHandle } from '~/components/Composer'
 import {
   MessageView,
@@ -77,6 +78,9 @@ function SessionPage() {
   const { openDrawer } = useShell()
   const sessionQ = useQuery(sessionQuery(sessionId))
   const session = sessionQ.data
+  React.useEffect(() => {
+    if (session?.id === sessionId) rememberSession(sessionId)
+  }, [session?.id, sessionId])
   const directory = session?.directory ?? ''
   const projects = useQuery(projectsQuery())
   const project = projects.data?.find((p) => p.id === session?.projectID)

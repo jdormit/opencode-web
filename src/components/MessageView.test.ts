@@ -9,8 +9,82 @@ import {
   nestedToolCalls,
   backgroundableToolStart,
   backgroundButtonDelay,
+  toolSummary,
+  toolElapsed,
 } from './MessageView'
 import type { Message, ToolPart } from '~/lib/oc'
+
+test('shell and subagent timers use execution timestamps and stop at completion', () => {
+  const part: ToolPart = {
+    type: 'tool',
+    id: 'call_timer',
+    name: 'shell',
+    time: { created: 1000, ran: 2000 },
+    state: { status: 'running', input: {}, metadata: {} },
+  }
+  expect(toolElapsed(part, 2000)).toBe('0s')
+  expect(toolElapsed(part, 5000)).toBe('3s')
+  expect(toolElapsed({ ...part, name: 'subagent' }, 64000)).toBe('1m 2s')
+  expect(toolElapsed({ ...part, time: { created: 1000 } }, 5000)).toBe('4s')
+  expect(toolElapsed(part, 1000)).toBe('0s')
+  expect(toolElapsed({ ...part, name: 'read' }, 5000)).toBeUndefined()
+  expect(toolElapsed({
+    ...part,
+    state: { status: 'streaming', input: '' },
+  }, 5000)).toBeUndefined()
+  const completed: ToolPart = {
+    ...part,
+    time: { ...part.time, completed: 7000 },
+    state: { status: 'completed', input: {}, content: [{ type: 'text', text: 'Done' }] },
+  }
+  expect(toolElapsed(completed, 10000)).toBe('5s')
+  expect(toolElapsed(completed, 100000)).toBe('5s')
+  expect(toolElapsed({ ...completed, time: part.time }, 10000)).toBeUndefined()
+  expect(toolElapsed({
+    ...completed,
+    state: { status: 'error', input: {}, error: { type: 'unknown', message: 'Failed' } },
+  }, 10000)).toBe('5s')
+  expect(toolElapsed({
+    ...part,
+    state: { status: 'running', input: { background: true }, metadata: {} },
+  }, 5000)).toBe('3s')
+})
+
+test('tool summaries use commands, paths, searches, and descriptions', () => {
+  expect(toolSummary({ command: 'pwd', description: 'Working directory' })).toBe('pwd')
+  expect(toolSummary({ filePath: '/src/app.ts' })).toBe('/src/app.ts')
+  expect(toolSummary({ path: '/src' })).toBe('/src')
+  expect(toolSummary({ pattern: '**/*.ts' })).toBe('**/*.ts')
+  expect(toolSummary({ query: 'tool cards' })).toBe('tool cards')
+  expect(toolSummary({ url: 'https://example.com' })).toBe('https://example.com')
+  expect(toolSummary({ description: 'Explore components' })).toBe('Explore components')
+  expect(toolSummary({ code: 'return 1' })).toBe('return 1')
+  expect(toolSummary({}, { title: 'Custom tool action' })).toBe('Custom tool action')
+})
+
+test('tool summaries ignore incomplete or unsupported inputs', () => {
+  for (const input of [undefined, null, [], '{"command":', { command: 42 }, {}]) {
+    expect(toolSummary(input)).toBeUndefined()
+  }
+  expect(toolSummary({ command: '  ', description: ' Useful action ' })).toBe('Useful action')
+  expect(toolSummary({}, { title: {} })).toBeUndefined()
+})
+
+test('skill calls preview their skill ID', () => {
+  expect(toolSummary({ id: 'plain-language' })).toBe('plain-language')
+  expect(toolSummary({ id: '' })).toBeUndefined()
+})
+
+test('patch calls preview affected files and operations without patch contents', () => {
+  expect(toolSummary({
+    patchText: '*** Begin Patch\n*** Add File: src/new.ts\n+Hello\n*** Update File: src/old.ts\n@@\n-old\n+new\n*** Delete File: src/deleted.ts\n*** End Patch',
+  })).toBe('Add src/new.ts · Update src/old.ts · Delete src/deleted.ts')
+  expect(toolSummary({
+    patchText: '*** Begin Patch\r\n*** Update File: old.ts\r\n*** Move to: new.ts\r\n*** End Patch',
+  })).toBe('Update old.ts · Move to new.ts')
+  expect(toolSummary({ patchText: '*** Begin Patch\n' })).toBeUndefined()
+  expect(toolSummary({ patchText: '+*** Delete File: not-a-header.ts' })).toBeUndefined()
+})
 
 test('synthetic messages render no user-facing content', () => {
   const message: Message = {
@@ -146,6 +220,9 @@ test('renders V2 user attachments and assistant content', () => {
   )
   expect(reply).toContain('shell')
   expect(reply).toContain('/tmp')
+  expect(reply.match(/<summary>[\s\S]*?<\/summary>/)?.[0]).toContain('title="pwd">pwd</span>')
+  expect(reply.match(/<summary>[\s\S]*?<\/summary>/)?.[0]).toContain('title="Elapsed time">0s</span>')
+  expect(reply).not.toContain('<details open')
 })
 
 test('groups adjacent reasoning and uses V2 timestamps', () => {
@@ -208,6 +285,8 @@ test('Code Mode nested calls render live progress and persisted outcomes', () =>
   )
   expect(live).toContain('memory.search')
   expect(live).toContain('running')
+  expect(live.match(/<summary>[\s\S]*?<\/summary>/)?.[0]).toContain('return tools.memory.search')
+  expect(live).toContain('title="hello">hello</span>')
   const persisted: Message = {
     ...message,
     content: [

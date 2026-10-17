@@ -242,6 +242,76 @@ export function backgroundButtonDelay(start: number, now = Date.now()) {
   return Math.max(0, start + 2001 - now)
 }
 
+export function toolElapsed(part: ToolPart, now = Date.now()): string | undefined {
+  if (!['shell', 'subagent'].includes(part.name) || part.state.status === 'streaming')
+    return undefined
+  const start = part.time.ran ?? part.time.created
+  const end = part.state.status === 'running' ? now : part.time.completed
+  if (end === undefined) return undefined
+  return duration(start, Math.max(start, end))
+}
+
+function ToolElapsed({ part }: { part: ToolPart }) {
+  const [now, setNow] = React.useState(Date.now)
+  const running = part.state.status === 'running'
+  React.useEffect(() => {
+    if (!running) return
+    setNow(Date.now())
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [running, part.id])
+  const elapsed = toolElapsed(part, now)
+  if (elapsed === undefined) return null
+  return (
+    <span className={styles.toolElapsed} title="Elapsed time">
+      {elapsed}
+    </span>
+  )
+}
+
+export function toolSummary(
+  input: unknown,
+  metadata?: unknown,
+): string | undefined {
+  const text = (value: unknown) =>
+    typeof value === 'string' && value.trim() ? value.trim() : undefined
+  if (input && typeof input === 'object' && !Array.isArray(input)) {
+    const fields = input as Record<string, unknown>
+    for (const key of [
+      'command',
+      'filePath',
+      'path',
+      'pattern',
+      'query',
+      'url',
+      'description',
+      'title',
+      'name',
+      'id',
+      'code',
+      'prompt',
+    ]) {
+      const value = text(fields[key])
+      if (value) return value
+    }
+    const patch = text(fields.patchText)
+    if (patch) {
+      const files = [
+        ...patch.matchAll(/^\*\*\* (Add File|Update File|Delete File|Move to): (.+)$/gm),
+      ].map((match) => {
+        const action =
+          match[1] === 'Move to' ? 'Move to' : match[1].replace(' File', '')
+        return `${action} ${match[2].trim()}`
+      })
+      if (files.length) return files.join(' · ')
+    }
+  }
+  if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
+    return text((metadata as Record<string, unknown>).title)
+  }
+  return undefined
+}
+
 function BackgroundToolButton({
   part,
   sessionId,
@@ -296,6 +366,10 @@ function ToolRow({
 }) {
   const { state } = part
   const child = taskSessionId(part)
+  const summary = toolSummary(
+    state.input,
+    'metadata' in state ? state.metadata : undefined,
+  )
   const output =
     'content' in state
       ? state.content
@@ -310,6 +384,12 @@ function ToolRow({
         <summary>
           <ChevronRightIcon size={13} className={styles.disclosure} />
           <span className={styles.toolName}>{part.name}</span>
+          {summary && (
+            <span className={styles.toolTitle} title={summary}>
+              {summary}
+            </span>
+          )}
+          {['shell', 'subagent'].includes(part.name) && <ToolElapsed part={part} />}
           <span className={styles.toolStatus}>
             {['streaming', 'running'].includes(state.status) && (
               <span className={styles.spinner} />
@@ -328,30 +408,38 @@ function ToolRow({
               ? state.input
               : JSON.stringify(state.input, null, 2)}
           </pre>
-          {nestedToolCalls(part).map((call, index) => (
-            <details
-              key={index}
-              className={styles.tool}
-              open={call.status === 'running'}
-            >
-              <summary>
-                <span className={styles.toolName}>{call.tool}</span> ·{' '}
-                {call.status}
-              </summary>
-              {call.input !== undefined && (
-                <pre className={styles.toolIo}>
-                  {JSON.stringify(call.input, null, 2)}
-                </pre>
-              )}
-              {call.result !== undefined && (
-                <pre className={styles.toolIo}>
-                  {typeof call.result === 'string'
-                    ? call.result
-                    : JSON.stringify(call.result, null, 2)}
-                </pre>
-              )}
-            </details>
-          ))}
+          {nestedToolCalls(part).map((call, index) => {
+            const summary = toolSummary(call.input)
+            return (
+              <details
+                key={index}
+                className={styles.tool}
+                open={call.status === 'running'}
+              >
+                <summary>
+                  <span className={styles.toolName}>{call.tool}</span>
+                  {summary && (
+                    <span className={styles.toolTitle} title={summary}>
+                      {summary}
+                    </span>
+                  )}
+                  <span>{call.status}</span>
+                </summary>
+                {call.input !== undefined && (
+                  <pre className={styles.toolIo}>
+                    {JSON.stringify(call.input, null, 2)}
+                  </pre>
+                )}
+                {call.result !== undefined && (
+                  <pre className={styles.toolIo}>
+                    {typeof call.result === 'string'
+                      ? call.result
+                      : JSON.stringify(call.result, null, 2)}
+                  </pre>
+                )}
+              </details>
+            )
+          })}
           {output && (
             <pre className={styles.toolIo}>{output.slice(0, 8000)}</pre>
           )}

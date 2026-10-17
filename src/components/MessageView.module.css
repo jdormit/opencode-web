@@ -184,6 +184,15 @@
   margin-left: auto;
 }
 
+.toolElapsed {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .toolChip {
   display: flex;
   align-items: center;

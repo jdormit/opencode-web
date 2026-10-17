@@ -279,6 +279,12 @@ export const providersQuery = (directory?: string) =>
     },
     staleTime: 300_000,
   })
+export const providerConnectionsQuery = () =>
+  queryOptions({
+    queryKey: ['provider-connections'],
+    queryFn: async () => (await (await client()).integration.list()).data,
+    staleTime: 30_000,
+  })
 export const configQuery = (directory?: string) =>
   queryOptions({
     queryKey: ['config', directory],

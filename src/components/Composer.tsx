@@ -265,12 +265,16 @@ export function Composer({
         value={text}
         rows={1}
         autoFocus={autoFocus}
-        enterKeyHint="send"
+        enterKeyHint="enter"
         onChange={(e) => {
           setText(e.target.value)
           resize()
         }}
         onKeyDown={(e) => {
+          // Touch keyboards use Enter for newlines, even with slash suggestions open.
+          if (e.key === 'Enter' && window.matchMedia('(pointer: coarse)').matches) {
+            return
+          }
           if (slashOpen && !e.nativeEvent.isComposing) {
             if (e.key === 'ArrowDown' || (e.key === 'n' && e.ctrlKey)) {
               e.preventDefault()

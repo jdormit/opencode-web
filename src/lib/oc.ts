@@ -448,6 +448,9 @@ export async function unrevertSession(sessionID: string, _directory: string) {
 export async function abortSession(sessionID: string, _directory: string) {
   return (await client()).session.interrupt({ sessionID })
 }
+export async function backgroundSession(sessionID: string) {
+  return (await client()).session.background({ sessionID })
+}
 export async function forkSession(
   sessionID: string,
   _directory: string,

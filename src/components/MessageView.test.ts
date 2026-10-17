@@ -7,8 +7,99 @@ import {
   reasoningLabel,
   forkPoint,
   nestedToolCalls,
+  backgroundableToolStart,
+  backgroundButtonDelay,
 } from './MessageView'
-import type { Message } from '~/lib/oc'
+import type { Message, ToolPart } from '~/lib/oc'
+
+test('synthetic messages render no user-facing content', () => {
+  const message: Message = {
+    id: 'msg_synthetic',
+    type: 'synthetic',
+    text: 'Internal agent instructions',
+    description: 'Agent-only notification',
+    time: { created: 1 },
+  }
+  expect(
+    renderToStaticMarkup(
+      createElement(MessageView, { message, directory: '/tmp' }),
+    ),
+  ).toBe('')
+})
+
+test('background button waits until a call has run for more than two seconds', () => {
+  expect(backgroundButtonDelay(1000, 1000)).toBe(2001)
+  expect(backgroundButtonDelay(1000, 2999)).toBe(2)
+  expect(backgroundButtonDelay(1000, 3000)).toBe(1)
+  expect(backgroundButtonDelay(1000, 3001)).toBe(0)
+  expect(backgroundButtonDelay(1000, 5000)).toBe(0)
+})
+
+test('only running foreground shell and subagent calls can be backgrounded', () => {
+  const part: ToolPart = {
+    type: 'tool',
+    id: 'call_background',
+    name: 'shell',
+    time: { created: 1000, ran: 1500 },
+    state: { status: 'running', input: {}, metadata: {} },
+  }
+  expect(backgroundableToolStart(part)).toBe(1500)
+  expect(backgroundableToolStart({ ...part, name: 'subagent' })).toBe(1500)
+  expect(backgroundableToolStart({ ...part, time: { created: 1000 } })).toBe(
+    1000,
+  )
+  expect(backgroundableToolStart({ ...part, name: 'read' })).toBeUndefined()
+  expect(backgroundableToolStart({ ...part, name: 'execute' })).toBeUndefined()
+  expect(
+    backgroundableToolStart({
+      ...part,
+      state: {
+        status: 'running',
+        input: { background: true },
+        metadata: {},
+      },
+    }),
+  ).toBeUndefined()
+  expect(
+    backgroundableToolStart({
+      ...part,
+      state: {
+        status: 'running',
+        input: {},
+        metadata: { background: true },
+      },
+    }),
+  ).toBeUndefined()
+  expect(
+    backgroundableToolStart({
+      ...part,
+      state: {
+        status: 'streaming',
+        input: '',
+      },
+    }),
+  ).toBeUndefined()
+  expect(
+    backgroundableToolStart({
+      ...part,
+      state: {
+        status: 'completed',
+        input: {},
+        content: [{ type: 'text', text: 'Done' }],
+      },
+    }),
+  ).toBeUndefined()
+  expect(
+    backgroundableToolStart({
+      ...part,
+      state: {
+        status: 'error',
+        input: {},
+        error: { type: 'unknown', message: 'Failed' },
+      },
+    }),
+  ).toBeUndefined()
+})
 
 test('renders V2 user attachments and assistant content', () => {
   const user: Message = {

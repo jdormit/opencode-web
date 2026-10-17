@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
-import { messagesQuery } from '~/lib/oc'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { backgroundSession, messagesQuery } from '~/lib/oc'
 import type { Message, Part, ReasoningPart, ToolPart } from '~/lib/oc'
 import { duration } from '~/lib/format'
 import { Markdown } from './Markdown'
@@ -78,12 +78,15 @@ export const MessageView = React.memo(function MessageView({
   directory,
   onFork,
   forkDisabled,
+  sessionId,
 }: {
   message: Message
   directory: string
   onFork?: (id: string) => void
   forkDisabled?: boolean
+  sessionId?: string
 }) {
+  if (message.type === 'synthetic') return null
   if (message.type === 'user')
     return (
       <div className={styles.userRow}>
@@ -145,7 +148,12 @@ export const MessageView = React.memo(function MessageView({
           ) : group.part.type === 'text' ? (
             <Markdown key={index}>{group.part.text}</Markdown>
           ) : (
-            <ToolRow key={index} part={group.part} directory={directory} />
+            <ToolRow
+              key={index}
+              part={group.part}
+              directory={directory}
+              sessionId={sessionId}
+            />
           ),
         )}
         {message.retry && (
@@ -219,7 +227,73 @@ export const MessageView = React.memo(function MessageView({
   )
 })
 
-function ToolRow({ part, directory }: { part: ToolPart; directory: string }) {
+export function backgroundableToolStart(part: ToolPart): number | undefined {
+  if (
+    !['shell', 'subagent'].includes(part.name) ||
+    part.state.status !== 'running' ||
+    part.state.input.background === true ||
+    part.state.metadata.background === true
+  )
+    return undefined
+  return part.time.ran ?? part.time.created
+}
+
+export function backgroundButtonDelay(start: number, now = Date.now()) {
+  return Math.max(0, start + 2001 - now)
+}
+
+function BackgroundToolButton({
+  part,
+  sessionId,
+}: {
+  part: ToolPart
+  sessionId: string
+}) {
+  const start = backgroundableToolStart(part)
+  const [ready, setReady] = React.useState(false)
+  const queryClient = useQueryClient()
+  const mutation = useMutation({
+    mutationFn: () => backgroundSession(sessionId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['messages', sessionId] })
+    },
+  })
+  React.useEffect(() => {
+    setReady(false)
+    if (start === undefined) return
+    const timer = setTimeout(() => setReady(true), backgroundButtonDelay(start))
+    return () => clearTimeout(timer)
+  }, [start])
+  if (start === undefined || !ready || mutation.isSuccess) return null
+  return (
+    <div className={styles.toolActions}>
+      <button
+        type="button"
+        className={styles.backgroundButton}
+        disabled={mutation.isPending}
+        title="Background all eligible foreground tools in this session"
+        onClick={() => mutation.mutate()}
+      >
+        {mutation.isPending ? 'Sending to background…' : 'Send to background'}
+      </button>
+      {mutation.isError && (
+        <span role="alert" className={styles.toolError}>
+          {mutation.error.message}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function ToolRow({
+  part,
+  directory,
+  sessionId,
+}: {
+  part: ToolPart
+  directory: string
+  sessionId?: string
+}) {
   const { state } = part
   const child = taskSessionId(part)
   const output =
@@ -231,59 +305,68 @@ function ToolRow({ part, directory }: { part: ToolPart; directory: string }) {
           .join('\n')
       : undefined
   return (
-    <details className={styles.tool}>
-      <summary>
-        <ChevronRightIcon size={13} className={styles.disclosure} />
-        <span className={styles.toolName}>{part.name}</span>
-        <span className={styles.toolStatus}>
-          {['streaming', 'running'].includes(state.status) && (
-            <span className={styles.spinner} />
-          )}
-          {state.status === 'completed' && (
-            <CheckIcon size={13} className={styles.ok} />
+    <div>
+      <details className={styles.tool}>
+        <summary>
+          <ChevronRightIcon size={13} className={styles.disclosure} />
+          <span className={styles.toolName}>{part.name}</span>
+          <span className={styles.toolStatus}>
+            {['streaming', 'running'].includes(state.status) && (
+              <span className={styles.spinner} />
+            )}
+            {state.status === 'completed' && (
+              <CheckIcon size={13} className={styles.ok} />
+            )}
+            {state.status === 'error' && (
+              <XIcon size={13} className={styles.bad} />
+            )}
+          </span>
+        </summary>
+        <div className={styles.toolBody}>
+          <pre className={styles.toolIo}>
+            {typeof state.input === 'string'
+              ? state.input
+              : JSON.stringify(state.input, null, 2)}
+          </pre>
+          {nestedToolCalls(part).map((call, index) => (
+            <details
+              key={index}
+              className={styles.tool}
+              open={call.status === 'running'}
+            >
+              <summary>
+                <span className={styles.toolName}>{call.tool}</span> ·{' '}
+                {call.status}
+              </summary>
+              {call.input !== undefined && (
+                <pre className={styles.toolIo}>
+                  {JSON.stringify(call.input, null, 2)}
+                </pre>
+              )}
+              {call.result !== undefined && (
+                <pre className={styles.toolIo}>
+                  {typeof call.result === 'string'
+                    ? call.result
+                    : JSON.stringify(call.result, null, 2)}
+                </pre>
+              )}
+            </details>
+          ))}
+          {output && (
+            <pre className={styles.toolIo}>{output.slice(0, 8000)}</pre>
           )}
           {state.status === 'error' && (
-            <XIcon size={13} className={styles.bad} />
+            <pre className={styles.toolError}>{state.error.message}</pre>
           )}
-        </span>
-      </summary>
-      <div className={styles.toolBody}>
-        <pre className={styles.toolIo}>
-          {typeof state.input === 'string'
-            ? state.input
-            : JSON.stringify(state.input, null, 2)}
-        </pre>
-        {nestedToolCalls(part).map((call, index) => (
-          <details
-            key={index}
-            className={styles.tool}
-            open={call.status === 'running'}
-          >
-            <summary>
-              <span className={styles.toolName}>{call.tool}</span> ·{' '}
-              {call.status}
-            </summary>
-            {call.input !== undefined && (
-              <pre className={styles.toolIo}>
-                {JSON.stringify(call.input, null, 2)}
-              </pre>
-            )}
-            {call.result !== undefined && (
-              <pre className={styles.toolIo}>
-                {typeof call.result === 'string'
-                  ? call.result
-                  : JSON.stringify(call.result, null, 2)}
-              </pre>
-            )}
-          </details>
-        ))}
-        {output && <pre className={styles.toolIo}>{output.slice(0, 8000)}</pre>}
-        {state.status === 'error' && (
-          <pre className={styles.toolError}>{state.error.message}</pre>
-        )}
-        {child && <SubagentActivity sessionId={child} directory={directory} />}
-      </div>
-    </details>
+          {child && (
+            <SubagentActivity sessionId={child} directory={directory} />
+          )}
+        </div>
+      </details>
+      {sessionId && backgroundableToolStart(part) !== undefined && (
+        <BackgroundToolButton key={part.id} part={part} sessionId={sessionId} />
+      )}
+    </div>
   )
 }
 

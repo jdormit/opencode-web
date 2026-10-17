@@ -377,6 +377,7 @@ function SessionPage() {
                 key={message.id}
                 message={message}
                 directory={directory}
+                sessionId={session?.parentID ? undefined : sessionId}
                 onFork={
                   !session?.parentID && endsAssistantTurn(visible, i)
                     ? (id) => run(() => handleFork(id))

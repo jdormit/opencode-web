@@ -195,6 +195,8 @@ test('renders V2 user attachments and assistant content', () => {
   )
   expect(html).toContain('Hello')
   expect(html).toContain('data:image/png;base64,YQ==')
+  expect(html).toContain('aria-label="View image: a.png"')
+  expect(html).not.toContain('download=')
   const assistant: Message = {
     id: 'msg_2',
     type: 'assistant',

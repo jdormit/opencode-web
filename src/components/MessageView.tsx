@@ -5,6 +5,7 @@ import { backgroundSession, messagesQuery } from '~/lib/oc'
 import type { Message, Part, ReasoningPart, ToolPart } from '~/lib/oc'
 import { duration } from '~/lib/format'
 import { Markdown } from './Markdown'
+import { ChatImage } from './ChatImage'
 import { CheckIcon, ChevronRightIcon, ForkIcon, XIcon } from './icons'
 import styles from './MessageView.module.css'
 
@@ -95,6 +96,14 @@ export const MessageView = React.memo(function MessageView({
             <div className={styles.userAttachments}>
               {message.files?.map((file, i) => {
                 const uri = `data:${file.mime};base64,${file.data}`
+                if (file.mime.startsWith('image/')) return (
+                  <ChatImage
+                    key={i}
+                    className={styles.userAttachmentImage}
+                    src={uri}
+                    alt={file.name ?? 'Attached image'}
+                  />
+                )
                 return (
                   <a
                     key={i}
@@ -103,17 +112,9 @@ export const MessageView = React.memo(function MessageView({
                     target="_blank"
                     rel="noreferrer"
                   >
-                    {file.mime.startsWith('image/') ? (
-                      <img
-                        className={styles.userAttachmentImage}
-                        src={uri}
-                        alt={file.name ?? 'Attached image'}
-                      />
-                    ) : (
-                      <span className={styles.userAttachmentFile}>
-                        {file.name ?? file.mime}
-                      </span>
-                    )}
+                    <span className={styles.userAttachmentFile}>
+                      {file.name ?? file.mime}
+                    </span>
                   </a>
                 )
               })}

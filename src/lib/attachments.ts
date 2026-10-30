@@ -7,6 +7,10 @@ export interface MessageAttachment {
 
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 
+export function clipboardImages(clipboardData: Pick<DataTransfer, 'files'>): Array<File> {
+  return Array.from(clipboardData.files).filter((file) => file.type.startsWith('image/'))
+}
+
 export const ACCEPTED_IMAGE_TYPES = [
   'image/png',
   'image/jpeg',

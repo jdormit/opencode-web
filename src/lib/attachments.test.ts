@@ -1,9 +1,37 @@
 import { describe, expect, test } from 'bun:test'
 import {
   attachmentMime,
+  clipboardImages,
   exifOrientation,
   MAX_ATTACHMENT_BYTES,
 } from './attachments'
+
+describe('clipboardImages', () => {
+  function clipboard(...files: Array<File>) {
+    return { files: Object.assign(files, { item: (index: number) => files[index] ?? null }) }
+  }
+
+  test('returns pasted images in order without duplicating them', () => {
+    const png = new File(['image'], 'screenshot.png', { type: 'image/png' })
+    const jpeg = new File(['image'], 'photo.jpg', { type: 'image/jpeg' })
+    expect(clipboardImages(clipboard(png, jpeg))).toEqual([png, jpeg])
+  })
+
+  test('leaves ordinary text pastes alone', () => {
+    expect(clipboardImages(clipboard())).toEqual([])
+  })
+
+  test('ignores non-image clipboard files', () => {
+    const text = new File(['hello'], 'notes.txt', { type: 'text/plain' })
+    const image = new File(['image'], 'image.webp', { type: 'image/webp' })
+    expect(clipboardImages(clipboard(text, image))).toEqual([image])
+  })
+
+  test('passes unsupported images through for normal attachment validation', () => {
+    const image = new File(['image'], 'image.bmp', { type: 'image/bmp' })
+    expect(clipboardImages(clipboard(image))).toEqual([image])
+  })
+})
 
 describe('attachmentMime', () => {
   test('accepts images and PDFs', async () => {

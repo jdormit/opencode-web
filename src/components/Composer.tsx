@@ -6,6 +6,7 @@ import { findModel } from '~/lib/model-usage'
 import type { ModelRef } from '~/lib/model-usage'
 import {
   ACCEPTED_FILE_TYPES,
+  clipboardImages,
   createAttachment,
 } from '~/lib/attachments'
 import type { MessageAttachment } from '~/lib/attachments'
@@ -181,7 +182,7 @@ export function Composer({
     !sending &&
     (!onProjectChange || !!project)
 
-  const addFiles = async (files: FileList | null) => {
+  const addFiles = async (files: FileList | Array<File> | null) => {
     if (!files?.length) return
     setAddingAttachments(true)
     setAttachmentError(undefined)
@@ -266,6 +267,12 @@ export function Composer({
         rows={1}
         autoFocus={autoFocus}
         enterKeyHint="enter"
+        onPaste={(event) => {
+          const images = clipboardImages(event.clipboardData)
+          if (!images.length) return
+          event.preventDefault()
+          void addFiles(images)
+        }}
         onChange={(e) => {
           setText(e.target.value)
           resize()
